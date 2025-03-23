@@ -31,6 +31,7 @@ class Galaxy_Hound:
         self.dmo        = kwargs.get('dmo'             ,False) # dark matter only
         self.flush      = kwargs.get('flush'           ,False) # !!!!!!!!! Check
         dens            = kwargs.get('dens'            ,False) # compute densities
+        self.p.SHIFT    = kwargs.get('shift'           ,False) # shift inside cells
         comov           = kwargs.get('comov'           ,True ) # comoving coordinates
         rockstar_path   = kwargs.get('rockstar_path'   ,"" )   #
         ########################################################################
@@ -93,7 +94,7 @@ class Galaxy_Hound:
             if self.p.Z>2:
                 self.rotate_galaxy(rmin=0.5,rmax=rmax_rot)
             else:
-                self.rotate_galaxy()
+                self.r,otate_galaxy()
             D = np.dot(self.matrix_T,np.dot(self.matrix_P,np.transpose(self.matrix_T)))
             if not self.quiet: nbe.print_matrix(D)
 

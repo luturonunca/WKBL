@@ -2,7 +2,7 @@ import os,sys
 import math
 import glob
 import cmath
-from iminuit import Minuit
+#from iminuit import Minuit
 import subprocess
 import numpy as np
 from unsio import *
@@ -30,6 +30,7 @@ class Info_sniffer:
         self.nmlexist = os.path.isfile(file_path+"/namelist.txt")
         if (self.nmlexist):
             nml = dict()
+
             with open(file_path+"/namelist.txt") as outinfo:
                 for line in outinfo:
                     eq_index = line.find('=')
@@ -47,6 +48,8 @@ class Info_sniffer:
                         else:
                             val = line[eq_index+1:-1]
                     nml[var_name] = val
+            if not "levelmax" in nml:
+                self.nmlexist = False
             nener=4
             if "metal" in nml:
                 nener+= int(nml["metal"])
@@ -70,13 +73,15 @@ class Info_sniffer:
         rho_crit = get_rho_crit(self.aexp, self.H0, _vars["omega_m"], _vars["omega_l"], self.G)
         self.rho_crit = rho_crit / 3.08567758e19**2 
         self.cmtopc = 1./self.pctocm
-        self.unitl=_vars["unit_l"]
-        self.unitd=_vars["unit_d"]
-        self.unitt=_vars["unit_t"]
+        self.unitl  = _vars["unit_l"]
+        self.unitd  = _vars["unit_d"]
+        self.unitt  = _vars["unit_t"]
+        self.unitv  = self.unitl/self.unitt
+        self.unitm  = self.unitd *  self.unitl**3
         self.boxlen = self.unitl/self.pctocm/1e6 #Mpc
-        self.simutokpc = self.unitl/self.pctocm/1e3
-        self.simutokms = self.unitl/1e5/self.unitt
-        self.simutoMsun=(self.unitd*self.unitl**3)/1e3/self.msuntokg
+        self.simutokpc  = self.unitl/self.pctocm/1e3
+        self.simutokms  = self.unitv/1e5
+        self.simutoMsun = self.unitm/1e3/self.msuntokg
         self.unitsimutoMsunkpc3=self.unitd*self.pctocm**3/1000/self.msuntokg
         self.kgtoGeV = 1/1.783e-27
         self.kpctocm = 3.086e21
@@ -374,7 +379,7 @@ def get_com(pos,m):
 def get_r(pos):
     return np.sqrt(pos[:,1]**2 + pos[:,1]**2 + pos[:,2]**2)
 
-def get_radii(r,masses,p,r_max,bins=512):
+def get_radii(r,masses,p,r_max,bins=1080,rhoref=0):
         try:
             r_min = p.reslim # resolution-limit in kpc
         except:
@@ -385,8 +390,11 @@ def get_radii(r,masses,p,r_max,bins=512):
         rho_s = np.cumsum(mhist) / vol_bin
         delta_crit = Delta_crit(p.aexp,p._vars["omega_m"],p._vars["omega_l"])
         r200 = r_bin[np.argmin(np.abs(rho_s - (200 * p.rho_crit)))]
-        r97 = r_bin[np.argmin(np.abs(rho_s - (97 * p.rho_crit)))]
-        rBN = r_bin[np.argmin(np.abs(rho_s - (delta_crit * p.rho_crit)))]
+        r97  = r_bin[np.argmin(np.abs(rho_s - (97 * p.rho_crit)))]
+        rBN  = r_bin[np.argmin(np.abs(rho_s - (delta_crit * p.rho_crit)))]
+        rREF = r_bin[np.argmin(np.abs(rho_s - rhoref))]
+        if rhoref>0:return delta_crit, r200,r97,rBN,rREF, 
+        
         return delta_crit, r200,r97,rBN
 
 
@@ -476,7 +484,7 @@ def check_particles(path):
         linum += 1
         if linum%2==0 and linum<=8:
             row = l.split(' ')
-            part_arrays = np.append(part_arrays,np.float(row[-1]))
+            part_arrays = np.append(part_arrays,np.float64(row[-1]))
     n_tot = part_arrays[0]
     n_dm = part_arrays[1]
     n_st = part_arrays[2]

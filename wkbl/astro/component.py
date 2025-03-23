@@ -56,8 +56,8 @@ class Component:
         self.vel3d = nbe.matrix_vs_vector(T,self.vel3d)
 
     def vel_frame(self,vx_av,vy_av,vz_av):
-        average_v = np.array([vx_av,vy_av,vz_av])
-        self.vel3d = self.vel3d - average_v
+        self.average_v = np.array([vx_av,vy_av,vz_av])
+        self.vel3d = self.vel3d - self.average_v
 
     def shift(self,center):
         self.pos3d = self.pos3d - center

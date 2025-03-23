@@ -8,20 +8,26 @@ class _gas(comp.Component):
         super().__init__(file_path,"gas",p,comov=comov)
         ok, temp = self.uns.getData("gas","temp")
         ok, rho = self.uns.getData("gas","rho")
-        ok, self.pot = self.uns.getData("gas","pot")
+        ok, pot = self.uns.getData("gas","pot")
+        ok, acc = self.uns.getData("gas","acc")
         ok, self.pres = self.uns.getData("hydro","4")
         ok, self.met = self.uns.getData("hydro","5")
         temp2 = self.pres/rho
+        #= self.pres/rho
         self.rho =  rho * self._p.simutoMsun / (self._p.simutokpc**3)
-
+        self.pot = pot * self._p.unitm * (self._p.unitl/self._p.unitt)**2
+        self.acc = acc * self._p.unitl / self._p.unitt**2
         ok, hsml = self.uns.getData("gas","hsml")
+        if (comov):
+            hsml/=self._p.aexp
         self.hsml = hsml * self._p.simutokpc
-        shift1 = (np.random.rand(len(hsml))-0.5)*self.hsml
-        shift2 = (np.random.rand(len(hsml))-0.5)*self.hsml
-        shift3 = (np.random.rand(len(hsml))-0.5)*self.hsml
-        self.pos3d[:,0]+=shift1
-        self.pos3d[:,1]+=shift2
-        self.pos3d[:,2]+=shift3
+        if self._p.SHIFT:
+            shift1 = (np.random.rand(len(hsml))-0.5)*self.hsml
+            shift2 = (np.random.rand(len(hsml))-0.5)*self.hsml
+            shift3 = (np.random.rand(len(hsml))-0.5)*self.hsml
+            self.pos3d[:,0]+=shift1
+            self.pos3d[:,1]+=shift2
+            self.pos3d[:,2]+=shift3
         self.tokelvin = self._p.mH / (1.3806200e-16) * (self._p.unitl / self._p.unitt)**2
         self.temp = temp * self.tokelvin
         if (self.get_sigma):
