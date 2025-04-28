@@ -94,7 +94,7 @@ class Galaxy_Hound:
             if self.p.Z>2:
                 self.rotate_galaxy(rmin=0.5,rmax=rmax_rot)
             else:
-                self.r,otate_galaxy()
+                self.rotate_galaxy()
             D = np.dot(self.matrix_T,np.dot(self.matrix_P,np.transpose(self.matrix_T)))
             if not self.quiet: nbe.print_matrix(D)
 
