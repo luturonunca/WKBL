@@ -15,29 +15,32 @@ from sklearn.neighbors import KDTree
 
 class SF_info: 
     def __init__(self, file_path,p, **kwargs):
+        if file_path[-1]=="/":
+            file_path=file_path[:-1]
+           
         # load st_info where the current stars where formed
-        star_files = glob.glob(file_path+"/star*")
+        nufile_path = file_path[:-5]+"{0:05d}".format(int(file_path[-5:])-1)
+        #star_files = glob.glob(file_path+"/star*")
+        star_files = glob.glob(nufile_path+"/star*")
+        
         if len(star_files)==0:
             # if there is no star files in the output directory
             # proceed to use the previous output, sometimes the 
             # very last output does not present any star files because
             # is just a final closing output
-            num = float(file_path[-5:])
-            if num<100:
-                # load de stars info from the previous output
-                file_path = file_path[:-2]+str(int(file_path[-2:])-1)
-            else:
-                file_path = file_path[:-3]+str(int(file_path[-3:])-1)
+            num = float(nufile_path[-5:])
         self.p = p 
         comov= kwargs.get('comov',False)
         self._center_history = np.array([[0,0,0]])
-        self.data = nbe._get_center(file_path, sf_hist=True)
-        stars = np.where(self.data[:,0]==0)[0]
+        self.data = nbe._read_extra(nufile_path, sf_hist=True)
+        stars = np.where(self.data[:,0]<=1)[0]
         if (comov):
             self.pos3d = self.data[stars,4:7] * p.simutokpc / p.aexp
         else:
             self.pos3d = self.data[stars,4:7] * p.simutokpc
+
         self.mass = self.data[stars,3] * p.simutoMsun
+        self.kind = self.data[stars,0]
         self.id = self.data[stars,1]
         self.hsml = 25000./(2.**(self.data[stars,2]))
         self.rho = self.data[stars,10]*self.p.scale_d / self.p.scale_d_gas
@@ -64,6 +67,7 @@ class SF_info:
         self.r = np.sqrt((self.pos3d[:,0]**2)+(self.pos3d[:,1]**2)+(self.pos3d[:,2]**2))
         in_halo = np.where(self.r <= n*r)
         self.pos3d = self.pos3d[in_halo] - center
+        self.kind = self.kind[in_halo]
         self.id = self.id[in_halo]
         self.rho = self.rho[in_halo]
         self.size = self.size[in_halo]

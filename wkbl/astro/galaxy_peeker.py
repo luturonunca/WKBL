@@ -60,7 +60,7 @@ class Galaxy_Hound:
         else:
             self.dmo = True
 
-    def r_virial(self,r_max=600,r_min=0,rotate=True,n=2.5,bins=512):
+    def r_virial(self,r_max=600,r_min=0.5,rotate=True,n=2.5,bins=512):
         """
         once the center have been defined this function computes
         several virial radii for the galaxy:
@@ -92,7 +92,7 @@ class Galaxy_Hound:
         if (rotate)and(self._sts):
             if (self.flush):self.redefine(n,simple=True)
             if self.p.Z>2:
-                self.rotate_galaxy(rmin=0.5,rmax=rmax_rot)
+                self.rotate_galaxy(rmin=r_min,rmax=rmax_rot)
             else:
                 self.rotate_galaxy()
             D = np.dot(self.matrix_T,np.dot(self.matrix_P,np.transpose(self.matrix_T)))

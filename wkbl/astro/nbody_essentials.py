@@ -1,4 +1,4 @@
-import os,sys
+import os,sys,re
 import math
 import glob
 import cmath
@@ -318,6 +318,9 @@ def get_rho_crit(a, h0, omg_m, omg_l, G):
     H_z = a_dot(a,h0,omg_m, omg_l) / a
     return 3. * H_z**2 /8. / np.pi / G 
 
+def fix_fortran_numbers(line):
+    # Fix cases like "0.123456789012-130" → "0.123456789012E-130"
+    return re.sub(r'(\d)([+-]\d{3})', r'\1E\2', line)
 
 
 def _read_extra(output,path="",clumps=False,rockstar=False,sf_hist=False):
@@ -349,9 +352,15 @@ def _read_extra(output,path="",clumps=False,rockstar=False,sf_hist=False):
             for file in list:
                     if os.path.getsize(file)==183:continue
                     try:
-                        data = np.loadtxt(file,skiprows=1,dtype=None)
+                        #data = np.loadtxt(file,skiprows=1,dtype=None)
+                        data = np.loadtxt(file,dtype=None)
                     except:
-                        continue
+                        try:
+                            with open(file) as f:
+                                fixed_lines = [fix_fortran_numbers(line) for line in f]
+                            data = np.loadtxt(fixed_lines)
+                        except:
+                            continue
                     if(np.size(data)==0):
                             continue
                     if(i>0):
@@ -362,7 +371,11 @@ def _read_extra(output,path="",clumps=False,rockstar=False,sf_hist=False):
             if not bool(len(data_all)): 
                 print("no stars log")
                 return np.array([])
-            array=(1e4*data_all[:,3]/np.max(data_all[:,3]))*(data_all[:,8]/np.max(data_all[:,8])).astype(int, copy=False)
+            indicator = len(np.shape(data_all))
+            if indicator==1:
+                array=(1e4*data_all[3]/np.max(data_all[3]))*(data_all[8]/np.max(data_all[8])).astype(int, copy=False)
+            else:
+                array=(1e4*data_all[:,3]/np.max(data_all[:,3]))*(data_all[:,8]/np.max(data_all[:,8])).astype(int, copy=False)
             data_sorted = data_all[array.argsort()]
             data_sorted = data_sorted[::-1]
             if (sf_hist):

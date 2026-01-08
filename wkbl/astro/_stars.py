@@ -1,4 +1,5 @@
 from . import component as comp
+from . import _sf_info as sfi
 import numpy as np
 
 class _stars(comp.Component):
@@ -7,7 +8,7 @@ class _stars(comp.Component):
         comov = kwargs.get('comov',False)
         r_search = kwargs.get('r_search',200.)
         try:
-            self.sf_info = SF_info(file_path,p,comov=comov)
+            self.sf_info = sfi.SF_info(file_path,p,comov=comov)
             self.gotsfInfo = True
         except:
             self.gotsfInfo = False
