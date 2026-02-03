@@ -1,16 +1,64 @@
 """
 Galaxy_Hound: load, center, and rotate RAMSES-style galaxy snapshots.
 """
+import glob
 import numpy as np
 import yt
-from . import  _dark_matter as d
+from . import _dark_matter as d
+from . import component as comp
 from . import _stars as s
 from . import _gas as g
-import glob
 from . import nbody_essentials as nbe
 
 
 ################################################################################
+def _read_header_counts(file_path):
+    header = glob.glob(file_path + "/header_?????.txt")
+    if not header:
+        return {}
+    counts = {}
+    with open(header[0], "r") as handle:
+        for line in handle:
+            row = line.strip().split()
+            if len(row) != 2:
+                continue
+            name, count = row
+            try:
+                counts[name] = int(count)
+            except ValueError:
+                continue
+    return counts
+
+
+def _header_summary(header_counts, dm_count, st_count, gas_count, bns_count):
+    return {
+        "dm_particles": int(dm_count),
+        "star_particles": int(st_count),
+        "gas_cells": int(gas_count),
+        "bns_particles": int(bns_count),
+        "raw_header": dict(header_counts),
+    }
+
+
+def _ensure_bns_filter(ds):
+    def bns_filter(pfilter, data):
+        return data[("io", "particle_family")] == 6
+
+    try:
+        yt.add_particle_filter(
+            "bns",
+            function=bns_filter,
+            filtered_type="io",
+            requires=["particle_family"],
+        )
+    except Exception:
+        pass
+    try:
+        ds.add_particle_filter("bns")
+    except Exception:
+        pass
+
+
 class Galaxy_Hound:
     def __init__(self, file_path,getcen=False,**kwargs):
         """
@@ -59,6 +107,7 @@ class Galaxy_Hound:
 
         ############################### ARGUMENTS ##############################
         gas             = kwargs.get('gas'             ,True ) # Load gas
+        bns             = kwargs.get('bns'             ,True ) # Load BNS particles
         self.rmax_rot   = kwargs.get('rmax_rot'        ,10   ) # rmax for rotation
         self.quiet      = kwargs.get('quiet'           ,False) # avoid printing
         hsml            = kwargs.get('hsml'            ,False) # force a res level
@@ -70,12 +119,13 @@ class Galaxy_Hound:
         rockstar_path   = kwargs.get('rockstar_path'   ,"" )   #
         ########################################################################
         # flags for components
-        self._dms, self._sts, self._gss  = False, False, False
+        self._dms, self._sts, self._gss, self._bns = False, False, False, False
         # inizialize mean halo velocity
         halo_vel = kwargs.get('halo_vel',[0.,0.,0.])    ########
         ############################### load data ##############################
         # read headers
         self.n_tot, self.n_dm, self.n_st = nbe.check_particles(file_path)
+        self.header_counts = _read_header_counts(file_path)
         # dark matter
         if self.n_dm > 0:
             if not self.quiet: print("loading Dark matter..")
@@ -88,18 +138,47 @@ class Galaxy_Hound:
                 ad=self.ad,
             )
             self._dms = True
+            dm_count = len(self.dm.mass)
+        else:
+            dm_count = 0
+        # bns particles
+        if bns and self.header_counts.get("bns", 0) > 0:
+            if not self.quiet: print("loading BNS..")
+            _ensure_bns_filter(self.ds)
+            self.bns = comp.Component(
+                file_path,
+                "bns",
+                self.p,
+                comov=comov,
+                ds=self.ds,
+                ad=self.ad,
+            )
+            self._bns = True
+            bns_count = len(self.bns.mass)
+        else:
+            bns_count = 0
         # stars
         if self.n_st > 0 and self.dmo==False:
             if not self.quiet: print("loading Stars..")
             self.st = s._stars(file_path, self.p, comov=comov, ds=self.ds, ad=self.ad)
             self._sts = True
+            st_count = len(self.st.mass)
             # where there is stars there is gas
             if  gas==True:
                 if not self.quiet: print("loading Gas..")
                 self.gs = g._gas(file_path, self.p, comov=comov, ds=self.ds, ad=self.ad)
                 self._gss = True
+                gas_count = len(self.gs.mass)
+            else:
+                gas_count = 0
         else:
             self.dmo = True
+            st_count = 0
+            gas_count = 0
+
+        self.header = _header_summary(
+            self.header_counts, dm_count, st_count, gas_count, bns_count
+        )
 
     def r_virial(self,r_max=600,r_min=0.5,rotate=True,n=2.5,bins=512):
         """
@@ -137,6 +216,9 @@ class Galaxy_Hound:
         if (self._gss):
             positions = np.vstack([positions,self.gs.pos3d])
             masses = np.append(masses,self.gs.mass)
+        if (self._bns):
+            positions = np.vstack([positions,self.bns.pos3d])
+            masses = np.append(masses,self.bns.mass)
         # find virial radii 
         r = np.sqrt((positions[:,0])**2 +(positions[:,1])**2 +(positions[:,2])**2 )
         a,b,c,d = nbe.get_radii(r,masses,self.p,r_max,bins=bins)
@@ -178,6 +260,8 @@ class Galaxy_Hound:
             self.st.shift(nucenter)
         if (self._gss):
             self.gs.shift(nucenter)
+        if (self._bns):
+            self.bns.shift(nucenter)
 
     def redefine(self,n,simple=False):
         """
@@ -196,6 +280,8 @@ class Galaxy_Hound:
             self.st.halo_Only(self.center, n, self.rBN,simple=simple)
         if (self._gss):
             self.gs.halo_Only(self.center, n, self.rBN,simple=simple)
+        if (self._bns):
+            self.bns.halo_Only(self.center, n, self.rBN,simple=simple)
 
     def rotate_galaxy(self,rmin=3,rmax=10,comp='st',affect=True):
         """
@@ -235,6 +321,8 @@ class Galaxy_Hound:
             self.st.rotate(T)
         if (self._gss) and (affect):
             self.gs.rotate(T)
+        if (self._bns) and (affect):
+            self.bns.rotate(T)
 
     def frame_of_ref(self,r):
         """
@@ -262,6 +350,9 @@ class Galaxy_Hound:
             #r = np.append(r,self.gs.r)
             mass = np.append(mass,self.gs.mass)
             vels = np.vstack([vels,self.gs.vel3d])
+        if (self._bns):
+            mass = np.append(mass,self.bns.mass)
+            vels = np.vstack([vels,self.bns.vel3d])
         # velocity of the center of mass 
         sel = np.where(r<self.r200)
         self.com_vx = np.sum(mass[sel]*vels[sel,0])/np.sum(mass[sel])
@@ -270,4 +361,16 @@ class Galaxy_Hound:
         if (self._dms):self.dm.vel_frame(self.com_vx,self.com_vy,self.com_vz)
         if (self._sts):self.st.vel_frame(self.com_vx,self.com_vy,self.com_vz)
         if (self._gss):self.gs.vel_frame(self.com_vx,self.com_vy,self.com_vz)
+        if (self._bns):self.bns.vel_frame(self.com_vx,self.com_vy,self.com_vz)
         ##########################################################
+
+    def print_header(self):
+        """
+        Print a short summary of particle and cell counts.
+        """
+        hdr = self.header
+        print("Header summary")
+        print("  DM particles  :", hdr.get("dm_particles", 0))
+        print("  stars         :", hdr.get("star_particles", 0))
+        print("  gas cells     :", hdr.get("gas_cells", 0))
+        print("  bns           :", hdr.get("bns_particles", 0))

@@ -43,8 +43,8 @@ class Component:
                  (ptype, "particle_identifier")],
                 default=np.arange(pos_x.size)
             )
-        elif comp == "stars":
-            ptype = "star"
+        elif comp in ("stars", "bns"):
+            ptype = "star" if comp == "stars" else "bns"
             pos_x = _yt_get_field(ad, [(ptype, "particle_position_x")])
             pos_y = _yt_get_field(ad, [(ptype, "particle_position_y")])
             pos_z = _yt_get_field(ad, [(ptype, "particle_position_z")])
@@ -127,4 +127,3 @@ class Component:
     def shift(self,center):
         self.pos3d = self.pos3d - center
         self._center_history = np.vstack((self._center_history,center))
-
