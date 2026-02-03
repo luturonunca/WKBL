@@ -423,19 +423,25 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         ##                         Rotation Matrix
         ##
         ###############################################################################
-        P = np.zeros((3, 3))
-        for i in range(3):
-            for j in range(3):
-                first = np.mean(pos_ring[:, i] * pos_ring[:, j])
-                second = (np.mean(pos_ring[:, i]) * np.mean(pos_ring[:, j]))
-                P[i][j] = first - second
-        eigen_values, evecs = np.linalg.eig(P)
-        order = np.argsort(abs(eigen_values))
-        T = np.zeros((3, 3))
-        T[0], T[1], T[2] = evecs[:, order[2]], evecs[:, order[1]], evecs[:, order[0]]
+        if pos_ring.size == 0 or not np.isfinite(pos_ring).all():
+            T = RI
+        else:
+            P = np.zeros((3, 3))
+            for i in range(3):
+                for j in range(3):
+                    first = np.mean(pos_ring[:, i] * pos_ring[:, j])
+                    second = (np.mean(pos_ring[:, i]) * np.mean(pos_ring[:, j]))
+                    P[i][j] = first - second
+            if not np.isfinite(P).all():
+                T = RI
+            else:
+                eigen_values, evecs = np.linalg.eig(P)
+                order = np.argsort(abs(eigen_values))
+                T = np.zeros((3, 3))
+                T[0], T[1], T[2] = evecs[:, order[2]], evecs[:, order[1]], evecs[:, order[0]]
 
-        E = np.column_stack([evecs[:, order[2]], evecs[:, order[1]], evecs[:, order[0]]])
-        T = E.T
+                E = np.column_stack([evecs[:, order[2]], evecs[:, order[1]], evecs[:, order[0]]])
+                T = E.T
     else:
         T = RI
 
