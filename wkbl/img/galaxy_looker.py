@@ -229,9 +229,11 @@ def project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
     return img
 
 
-def compute_density_gradients(pos, density, k=32):
+def compute_density_gradients(pos, density, cell_size, k=32, limiter="none"):
     """
     Estimate per-cell density gradients using least-squares on k nearest neighbors.
+    Optionally apply a monotonicity limiter to keep reconstructions within
+    neighbor min/max values.
     """
     n = pos.shape[0]
     grad = np.zeros((n, 3), dtype=np.float64)
@@ -253,6 +255,21 @@ def compute_density_gradients(pos, density, k=32):
         A = pos[nbrs] - pos[i]
         b = density[nbrs] - density[i]
         g, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+        if limiter != "none":
+            rho_min = np.min(density[nbrs])
+            rho_max = np.max(density[nbrs])
+            if density[i] < rho_min:
+                rho_min = density[i]
+            if density[i] > rho_max:
+                rho_max = density[i]
+            bound = 0.5 * cell_size[i] * (abs(g[0]) + abs(g[1]) + abs(g[2]))
+            if bound > 0.0:
+                s1 = (density[i] - rho_min) / bound
+                s2 = (rho_max - density[i]) / bound
+                s = min(1.0, s1, s2)
+                if s < 0.0:
+                    s = 0.0
+                g = g * s
         grad[i] = g
 
     return grad
@@ -523,7 +540,8 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
                     Xi=0, Yi=1, Zi=2, RI=None, Rx=None,
                     pixel_size=None, max_subcell=None, interp_mode="native",
                     refine_factor=1.0, interp3d=False, cube_factor=1.0,
-                    return_cube=False, incell_grad=False, grad_k=32):
+                    return_cube=False, incell_grad=False, grad_k=32,
+                    grad_limiter="none"):
     """
     Project gas mass into face-on and edge-on images with AMR-aware subcell splitting.
 
@@ -564,6 +582,9 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         If True, use a linear per-cell density gradient for subcell values.
     grad_k : int
         Number of nearest neighbors used for gradient estimation.
+    grad_limiter : {"none", "minmax"}
+        If set to "minmax", scales gradients to keep subcell values within
+        neighbor min/max density values.
 
     Returns
     -------
@@ -660,7 +681,8 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     if incell_grad:
         density = quantity / (cell_size**3)
         pos = np.column_stack((x, y, z))
-        grad = compute_density_gradients(pos, density, k=grad_k)
+        limiter = "minmax" if grad_limiter == "minmax" else "none"
+        grad = compute_density_gradients(pos, density, cell_size, k=grad_k, limiter=limiter)
         imgface = project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
                                                   img_shape, bounds, pixel_size, max_subcell, T)
         imgedge = project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
