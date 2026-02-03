@@ -6,6 +6,7 @@
 *.swpx
 *.swn
 **/.ipynb_checkpoints/
+wkbl/astro/TMP/
 
 # Images #
 ##########
