@@ -362,6 +362,72 @@ def frame_size_linear(z, size_min, size_max, size_max2,
     return result.item() if np.ndim(z) == 0 else result
 
 
+def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
+                    Xi=0, Yi=1, Zi=2, RI=None, Rx=None):
+    if rmax is None or rmin is None:
+        raise ValueError("rmax and rmin are required.")
+    if outr is None:
+        raise ValueError("outr is required.")
+    if RI is None:
+        raise ValueError("RI is required.")
+    if Rx is None:
+        raise ValueError("Rx is required.")
+    if rotate:
+        r2 = (simu.st.pos3d[:, 0])**2 + (simu.st.pos3d[:, 1])**2 + (simu.st.pos3d[:, 2])**2
+        pos_ring = simu.st.pos3d[(r2 < rmax**2) & (r2 > rmin**2)]
+        vel_ring = simu.st.vel3d[(r2 < rmax**2) & (r2 > rmin**2)]
+
+        ###############################################################################
+        ##
+        ##                         Rotation Matrix
+        ##
+        ###############################################################################
+        P = np.zeros((3, 3))
+        for i in range(3):
+            for j in range(3):
+                first = np.mean(pos_ring[:, i] * pos_ring[:, j])
+                second = (np.mean(pos_ring[:, i]) * np.mean(pos_ring[:, j]))
+                P[i][j] = first - second
+        eigen_values, evecs = np.linalg.eig(P)
+        order = np.argsort(abs(eigen_values))
+        T = np.zeros((3, 3))
+        T[0], T[1], T[2] = evecs[:, order[2]], evecs[:, order[1]], evecs[:, order[0]]
+
+        E = np.column_stack([evecs[:, order[2]], evecs[:, order[1]], evecs[:, order[0]]])
+        T = E.T
+    else:
+        T = RI
+
+    sel = np.where((np.abs(simu.gs.pos3d[:, 0]) < outr) &
+                   (np.abs(simu.gs.pos3d[:, 1]) < outr) &
+                   (np.abs(simu.gs.pos3d[:, 2]) < outr))[0]
+
+    # Synthetic data
+    N = len(sel)
+
+    x = simu.gs.pos3d[:, Xi][sel]
+    y = simu.gs.pos3d[:, Yi][sel]
+    z = simu.gs.pos3d[:, Zi][sel]
+    cell_size = simu.gs.hsml[sel]
+    quantity = simu.gs.mass[sel]
+
+    pixel_size = np.min(cell_size)  # match finest resolution
+    print("{0:.3f} pc".format(pixel_size * 1000))
+    bounds = (-outr, outr, -outr, outr)   # x/y extent of domain
+    nx = int((bounds[1] - bounds[0]) / pixel_size)
+    ny = int((bounds[3] - bounds[2]) / pixel_size)
+    img_shape = (nx, ny)
+    # pixel_size =  2*simu.gs.hsml.min()
+    max_subcell = pixel_size  # choose appropriately
+
+    imgface = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
+                                         img_shape, bounds, pixel_size, max_subcell, T)
+
+    imgedge = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
+                                         img_shape, bounds, pixel_size, max_subcell, Rx @ T)
+    return imgface, imgedge, T
+
+
 def maketheplot(ax, img, imgback, Back, gal, R, sinks=True, size=300, app=20,
                 square=False, AUTO=True, a=1e2, b=1e4, ffac=1, coords=[0, 1, 2],
                 rbondi=1, bounds=None, star_pos=None, star_vel=None, star_sel=None,
@@ -460,4 +526,3 @@ def maketheplot(ax, img, imgback, Back, gal, R, sinks=True, size=300, app=20,
 
     ax.set_xlim([-width,width])
     return width, height
-
