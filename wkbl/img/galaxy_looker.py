@@ -363,7 +363,8 @@ def frame_size_linear(z, size_min, size_max, size_max2,
 
 
 def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
-                    Xi=0, Yi=1, Zi=2, RI=None, Rx=None):
+                    Xi=0, Yi=1, Zi=2, RI=None, Rx=None,
+                    pixel_size=None, max_subcell=None):
     if rmax is None or rmin is None:
         raise ValueError("rmax and rmin are required.")
     if outr is None:
@@ -411,14 +412,16 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     cell_size = simu.gs.hsml[sel]
     quantity = simu.gs.mass[sel]
 
-    pixel_size = np.min(cell_size)  # match finest resolution
+    if pixel_size is None:
+        pixel_size = np.min(cell_size)  # match finest resolution
     print("{0:.3f} pc".format(pixel_size * 1000))
     bounds = (-outr, outr, -outr, outr)   # x/y extent of domain
     nx = int((bounds[1] - bounds[0]) / pixel_size)
     ny = int((bounds[3] - bounds[2]) / pixel_size)
     img_shape = (nx, ny)
     # pixel_size =  2*simu.gs.hsml.min()
-    max_subcell = pixel_size  # choose appropriately
+    if max_subcell is None:
+        max_subcell = pixel_size  # choose appropriately
 
     imgface = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
                                          img_shape, bounds, pixel_size, max_subcell, T)
