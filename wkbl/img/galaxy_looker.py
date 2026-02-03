@@ -565,13 +565,16 @@ def frame_size_linear(z, size_min, size_max, size_max2,
     return result.item() if np.ndim(z) == 0 else result
 
 
+GASIMAGESARRAYS_VERSION = "2026-02-03"
+
+
 def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
                     Xi=0, Yi=1, Zi=2, RI=None, Rx=None,
                     pixel_size=None, max_subcell=None, interp_mode="native",
                     refine_factor=1.0, interp3d=False, cube_factor=1.0,
                     return_cube=False, incell_grad=False, grad_k=32,
                     grad_limiter="none", grad_mode="knn",
-                    grad_finer_only=False):
+                    grad_finer_only=False, print_version=False):
     """
     Project gas mass into face-on and edge-on images with AMR-aware subcell splitting.
 
@@ -620,6 +623,8 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         Gradient neighbor selection: kNN or finer cells inside coarse cell volume.
     grad_finer_only : bool
         If True, only use neighbors with smaller cell_size for gradients.
+    print_version : bool
+        If True, print the gasimagesarrays version string.
     grad_mode : {"knn", "cell_volume"}
         Gradient neighbor selection: kNN or finer cells inside coarse cell volume.
     grad_finer_only : bool
@@ -648,6 +653,8 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         raise ValueError("RI is required.")
     if Rx is None:
         raise ValueError("Rx is required.")
+    if print_version:
+        print(f"gasimagesarrays version: {GASIMAGESARRAYS_VERSION}")
     if rotate:
         r2 = (simu.st.pos3d[:, 0])**2 + (simu.st.pos3d[:, 1])**2 + (simu.st.pos3d[:, 2])**2
         pos_ring = simu.st.pos3d[(r2 < rmax**2) & (r2 > rmin**2)]
