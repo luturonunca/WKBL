@@ -6,6 +6,7 @@ from matplotlib import rc
 from matplotlib.colors import LogNorm
 from matplotlib.patches import Circle
 from numba import njit, prange
+from scipy.spatial import cKDTree
 
 warnings.filterwarnings("ignore")
 rc('font', **{'family': 'sans-serif', 'sans-serif': ['Helvetica']})
@@ -151,6 +152,110 @@ def project_cells_split_rotate(x, y, z, cell_size, quantity, quantity_type,
                     img[iix, iiy] = 0.0
 
     return img
+
+
+@njit(parallel=True)
+def project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
+                                    img_shape, bounds, pixel_size, max_subcell, R):
+    """
+    Split cells into subcells, evaluate density with a per-cell linear gradient,
+    rotate, project, and accumulate into the image.
+    """
+    nx, ny = img_shape
+    img = np.zeros((nx, ny), dtype=np.float64)
+
+    xmin, xmax, ymin, ymax = bounds
+
+    N = x.shape[0]
+    for i in prange(N):
+        cx = x[i]
+        cy = y[i]
+        cz = z[i]
+        l = cell_size[i]
+        rho0 = density[i]
+        gx, gy, gz = grad[i, 0], grad[i, 1], grad[i, 2]
+
+        n = int(np.ceil(l / max_subcell))
+        if n < 1:
+            n = 1
+        ls = l / n
+        x0 = cx - 0.5 * l
+        y0 = cy - 0.5 * l
+        z0 = cz - 0.5 * l
+
+        for ix in range(n):
+            sx = x0 + (ix + 0.5) * ls
+            dx = sx - cx
+            for iy in range(n):
+                sy = y0 + (iy + 0.5) * ls
+                dy = sy - cy
+                for iz in range(n):
+                    sz = z0 + (iz + 0.5) * ls
+                    dz = sz - cz
+
+                    rho = rho0 + gx * dx + gy * dy + gz * dz
+                    if rho < 0.0:
+                        rho = 0.0
+
+                    rx = R[0,0]*sx + R[0,1]*sy + R[0,2]*sz
+                    ry = R[1,0]*sx + R[1,1]*sy + R[1,2]*sz
+
+                    x0p = rx - 0.5 * ls
+                    x1p = rx + 0.5 * ls
+                    y0p = ry - 0.5 * ls
+                    y1p = ry + 0.5 * ls
+
+                    ix0 = max(0, int((x0p - xmin) / pixel_size))
+                    ix1 = min(nx, int((x1p - xmin) / pixel_size) + 1)
+                    iy0 = max(0, int((y0p - ymin) / pixel_size))
+                    iy1 = min(ny, int((y1p - ymin) / pixel_size) + 1)
+
+                    for iix in range(ix0, ix1):
+                        px0 = xmin + iix * pixel_size
+                        px1 = px0 + pixel_size
+                        ox = max(0.0, min(x1p, px1) - max(x0p, px0))
+                        if ox <= 0.0:
+                            continue
+                        for iiy in range(iy0, iy1):
+                            py0 = ymin + iiy * pixel_size
+                            py1 = py0 + pixel_size
+                            oy = max(0.0, min(y1p, py1) - max(y0p, py0))
+                            if oy <= 0.0:
+                                continue
+                            area_overlap = ox * oy
+                            if area_overlap > 0.0:
+                                img[iix, iiy] += rho * ls * area_overlap
+
+    return img
+
+
+def compute_density_gradients(pos, density, k=32):
+    """
+    Estimate per-cell density gradients using least-squares on k nearest neighbors.
+    """
+    n = pos.shape[0]
+    grad = np.zeros((n, 3), dtype=np.float64)
+    if n < 4:
+        return grad
+
+    k_use = min(k + 1, n)
+    tree = cKDTree(pos)
+    _, idxs = tree.query(pos, k=k_use)
+
+    for i in range(n):
+        nbrs = idxs[i]
+        if nbrs[0] == i:
+            nbrs = nbrs[1:]
+        else:
+            nbrs = nbrs[:k_use - 1]
+        if nbrs.size < 3:
+            continue
+        A = pos[nbrs] - pos[i]
+        b = density[nbrs] - density[i]
+        g, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+        grad[i] = g
+
+    return grad
 
 
 @njit
@@ -418,7 +523,7 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
                     Xi=0, Yi=1, Zi=2, RI=None, Rx=None,
                     pixel_size=None, max_subcell=None, interp_mode="native",
                     refine_factor=1.0, interp3d=False, cube_factor=1.0,
-                    return_cube=False):
+                    return_cube=False, incell_grad=False, grad_k=32):
     """
     Project gas mass into face-on and edge-on images with AMR-aware subcell splitting.
 
@@ -455,6 +560,10 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         Grid spacing is cube_factor * min(cell_size) for the 3D cube.
     return_cube : bool
         If True, return the 3D cube and its metadata in addition to 2D images.
+    incell_grad : bool
+        If True, use a linear per-cell density gradient for subcell values.
+    grad_k : int
+        Number of nearest neighbors used for gradient estimation.
 
     Returns
     -------
@@ -548,11 +657,19 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     img_shape = (nx, ny)
     # pixel_size =  2*simu.gs.hsml.min()
 
-    imgface = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
-                                         img_shape, bounds, pixel_size, max_subcell, T)
-
-    imgedge = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
-                                         img_shape, bounds, pixel_size, max_subcell, Rx @ T)
+    if incell_grad:
+        density = quantity / (cell_size**3)
+        pos = np.column_stack((x, y, z))
+        grad = compute_density_gradients(pos, density, k=grad_k)
+        imgface = project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
+                                                  img_shape, bounds, pixel_size, max_subcell, T)
+        imgedge = project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
+                                                  img_shape, bounds, pixel_size, max_subcell, Rx @ T)
+    else:
+        imgface = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
+                                             img_shape, bounds, pixel_size, max_subcell, T)
+        imgedge = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
+                                             img_shape, bounds, pixel_size, max_subcell, Rx @ T)
 
     if interp3d:
         if cube_factor <= 0:
