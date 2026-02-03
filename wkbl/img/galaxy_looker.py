@@ -156,8 +156,7 @@ def project_cells_split_rotate(x, y, z, cell_size, quantity, quantity_type,
 
 @njit(parallel=True)
 def project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
-                                    img_shape, bounds, pixel_size, max_subcell, R,
-                                    min_cell_size):
+                                    img_shape, bounds, pixel_size, max_subcell, R):
     """
     Split cells into subcells, evaluate density with a per-cell linear gradient,
     rotate, project, and accumulate into the image.
@@ -194,12 +193,9 @@ def project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
                     sz = z0 + (iz + 0.5) * ls
                     dz = sz - cz
 
-                    if l <= min_cell_size:
-                        rho = rho0
-                    else:
-                        rho = rho0 + gx * dx + gy * dy + gz * dz
-                        if rho < 0.0:
-                            rho = 0.0
+                    rho = rho0 + gx * dx + gy * dy + gz * dz
+                    if rho < 0.0:
+                        rho = 0.0
 
                     rx = R[0,0]*sx + R[0,1]*sy + R[0,2]*sz
                     ry = R[1,0]*sx + R[1,1]*sy + R[1,2]*sz
@@ -614,6 +610,7 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         If True, return the 3D cube and its metadata in addition to 2D images.
     incell_grad : bool
         If True, use a linear per-cell density gradient for subcell values.
+        Finest cells are kept unchanged and projected without interpolation.
     grad_k : int
         Number of nearest neighbors used for gradient estimation.
     grad_limiter : {"none", "minmax"}
@@ -728,12 +725,29 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
                                          limiter=limiter, mode=grad_mode,
                                          finer_only=grad_finer_only)
         min_cell_size = np.min(cell_size)
-        imgface = project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
-                                                  img_shape, bounds, pixel_size, max_subcell, T,
-                                                  min_cell_size)
-        imgedge = project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
-                                                  img_shape, bounds, pixel_size, max_subcell, Rx @ T,
-                                                  min_cell_size)
+        fine_mask = cell_size <= min_cell_size
+        coarse_mask = ~fine_mask
+
+        imgface = np.zeros(img_shape, dtype=np.float64)
+        imgedge = np.zeros(img_shape, dtype=np.float64)
+
+        if np.any(fine_mask):
+            imgface += project_cells_split_rotate(x[fine_mask], y[fine_mask], z[fine_mask],
+                                                  cell_size[fine_mask], quantity[fine_mask], 0,
+                                                  img_shape, bounds, pixel_size, max_subcell, T)
+            imgedge += project_cells_split_rotate(x[fine_mask], y[fine_mask], z[fine_mask],
+                                                  cell_size[fine_mask], quantity[fine_mask], 0,
+                                                  img_shape, bounds, pixel_size, max_subcell, Rx @ T)
+
+        if np.any(coarse_mask):
+            imgface += project_cells_split_rotate_grad(x[coarse_mask], y[coarse_mask], z[coarse_mask],
+                                                      cell_size[coarse_mask], density[coarse_mask],
+                                                      grad[coarse_mask], img_shape, bounds,
+                                                      pixel_size, max_subcell, T)
+            imgedge += project_cells_split_rotate_grad(x[coarse_mask], y[coarse_mask], z[coarse_mask],
+                                                      cell_size[coarse_mask], density[coarse_mask],
+                                                      grad[coarse_mask], img_shape, bounds,
+                                                      pixel_size, max_subcell, Rx @ T)
     else:
         imgface = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
                                              img_shape, bounds, pixel_size, max_subcell, T)
