@@ -153,6 +153,58 @@ def project_cells_split_rotate(x, y, z, cell_size, quantity, quantity_type,
     return img
 
 
+@njit
+def trilinear_regrid3d(x, y, z, values, bounds, spacing):
+    """
+    Trilinear interpolation of point-centered values onto a uniform 3D grid.
+    Note: This is not mass-conserving; it interpolates values at the grid nodes.
+    """
+    xmin, xmax, ymin, ymax, zmin, zmax = bounds
+    nx = int((xmax - xmin) / spacing)
+    ny = int((ymax - ymin) / spacing)
+    nz = int((zmax - zmin) / spacing)
+    grid = np.zeros((nx, ny, nz), dtype=np.float64)
+
+    n = x.shape[0]
+    for i in range(n):
+        gx = (x[i] - xmin) / spacing
+        gy = (y[i] - ymin) / spacing
+        gz = (z[i] - zmin) / spacing
+
+        i0 = int(np.floor(gx))
+        j0 = int(np.floor(gy))
+        k0 = int(np.floor(gz))
+        if i0 < 0 or j0 < 0 or k0 < 0:
+            continue
+        if i0 >= nx - 1 or j0 >= ny - 1 or k0 >= nz - 1:
+            continue
+
+        fx = gx - i0
+        fy = gy - j0
+        fz = gz - k0
+
+        w000 = (1.0 - fx) * (1.0 - fy) * (1.0 - fz)
+        w100 = fx * (1.0 - fy) * (1.0 - fz)
+        w010 = (1.0 - fx) * fy * (1.0 - fz)
+        w001 = (1.0 - fx) * (1.0 - fy) * fz
+        w110 = fx * fy * (1.0 - fz)
+        w101 = fx * (1.0 - fy) * fz
+        w011 = (1.0 - fx) * fy * fz
+        w111 = fx * fy * fz
+
+        v = values[i]
+        grid[i0, j0, k0] += v * w000
+        grid[i0 + 1, j0, k0] += v * w100
+        grid[i0, j0 + 1, k0] += v * w010
+        grid[i0, j0, k0 + 1] += v * w001
+        grid[i0 + 1, j0 + 1, k0] += v * w110
+        grid[i0 + 1, j0, k0 + 1] += v * w101
+        grid[i0, j0 + 1, k0 + 1] += v * w011
+        grid[i0 + 1, j0 + 1, k0 + 1] += v * w111
+
+    return grid
+
+
 def build_rotation_from_angmom(pos, vel, mass=None, prev_R=None, eps=1e-12):
     """
     Build rotation matrix R (3x3) that maps world coords -> frame where angular momentum is +z.
@@ -365,7 +417,8 @@ def frame_size_linear(z, size_min, size_max, size_max2,
 def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
                     Xi=0, Yi=1, Zi=2, RI=None, Rx=None,
                     pixel_size=None, max_subcell=None, interp_mode="native",
-                    refine_factor=1.0):
+                    refine_factor=1.0, interp3d=False, cube_factor=1.0,
+                    return_cube=False):
     """
     Project gas mass into face-on and edge-on images with AMR-aware subcell splitting.
 
@@ -396,6 +449,13 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     refine_factor : float
         Subcell size factor used when interp_mode="refine".
 
+    interp3d : bool
+        If True, build a 3D trilinear interpolated cube on a uniform grid.
+    cube_factor : float
+        Grid spacing is cube_factor * min(cell_size) for the 3D cube.
+    return_cube : bool
+        If True, return the 3D cube and its metadata in addition to 2D images.
+
     Returns
     -------
     imgface : 2D ndarray
@@ -404,6 +464,12 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         Edge-on projected gas image.
     T : (3,3) ndarray
         Rotation matrix used for the projection.
+    cube : 3D ndarray, optional
+        Trilinear interpolated cube (if return_cube is True).
+    cube_bounds : tuple, optional
+        Bounds used for the cube (if return_cube is True).
+    cube_spacing : float, optional
+        Grid spacing used for the cube (if return_cube is True).
     """
     if rmax is None or rmin is None:
         raise ValueError("rmax and rmin are required.")
@@ -487,6 +553,20 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
 
     imgedge = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
                                          img_shape, bounds, pixel_size, max_subcell, Rx @ T)
+
+    if interp3d:
+        if cube_factor <= 0:
+            raise ValueError("cube_factor must be > 0.")
+        cube_spacing = cube_factor * np.min(cell_size)
+        cube_bounds = (-outr, outr, -outr, outr, -outr, outr)
+        pos = np.column_stack((x, y, z))
+        if rotate:
+            pos = pos @ T.T
+        cube = trilinear_regrid3d(pos[:, 0], pos[:, 1], pos[:, 2], quantity,
+                                  cube_bounds, cube_spacing)
+        if return_cube:
+            return imgface, imgedge, T, cube, cube_bounds, cube_spacing
+
     return imgface, imgedge, T
 
 
