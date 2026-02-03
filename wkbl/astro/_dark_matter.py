@@ -9,13 +9,15 @@ class _dark_matter(comp.Component):
         hsml = kwargs.get('hsml',False)
         comov = kwargs.get('comov',False)
         rs = kwargs.get('rs',"")
+        ds = kwargs.get("ds")
+        ad = kwargs.get("ad")
         try:
             self.Clumps = clumps.Clumps(file_path,p,comov=comov,
                       rs=rs)
             self.subhalos = True
         except:
             self.subhalos = False
-        super().__init__(file_path,"halo",p,comov=comov)
+        super().__init__(file_path, "halo", p, comov=comov, ds=ds, ad=ad)
         #super().__init__()
     
     def halo_Only(self, center,n , r200,simple=False):

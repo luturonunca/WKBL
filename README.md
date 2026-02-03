@@ -5,6 +5,8 @@ snapshots. The main entry point is `Galaxy_Hound` in `wkbl/astro/galaxy_peeker.p
 
 #### Load a snapshot
 
+This uses `yt` to read RAMSES outputs.
+
 ```python
 from wkbl.astro.galaxy_peeker import Galaxy_Hound
 

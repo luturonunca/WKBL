@@ -5,7 +5,6 @@ import cmath
 #from iminuit import Minuit
 import subprocess
 import numpy as np
-from unsio import *
 import scipy.special as sp
 from numpy import exp, sqrt
 import scipy.integrate as integrate

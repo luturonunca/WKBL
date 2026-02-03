@@ -5,7 +5,6 @@ import cmath
 #import cfalcon
 import subprocess
 import numpy as np
-from unsio import *
 import scipy.special as sp
 from numpy import exp, sqrt
 import nbody_essentials as nbe
@@ -104,4 +103,3 @@ class SF_info:
     def shift(self, center):
         self.pos3d = self.pos3d - center
         self._center_history = np.vstack((self._center_history,center))
-

@@ -1,30 +1,95 @@
-import  __future__
+import __future__
 import numpy as np
 import sys
-from unsio.input import CUNS_IN as CunsIn
+import yt
 from . import nbody_essentials as nbe
+
+
+def _yt_get_field(ad, candidates, default=None):
+    for field in candidates:
+        try:
+            return ad[field]
+        except Exception:
+            continue
+    if default is None:
+        raise KeyError("None of the fields found: {}".format(candidates))
+    return default
 
 class Component:
     def __init__(self, file_path,comp,p, **kwargs):
         self._p = p
         self._center_history = np.array([0.,0.,0.])##########
-        self.uns = CunsIn(file_path,comp)
         comov = kwargs.get('comov',False)
         self.halo_vel = kwargs.get('halo_vel',[0.,0.,0.])    ##########
-        ok = self.uns.nextFrame("")
-        ok, pos = self.uns.getData(comp,"pos")
-        ok, vel = self.uns.getData(comp,"vel")
-        ok, mass = self.uns.getData(comp,"mass")
-        ok, self.id = self.uns.getData(comp,"id")
-        ### coordinates ###
-        if (comov):
-            pos = pos * self._p.simutokpc / self._p.aexp
+        ds = kwargs.get("ds")
+        ad = kwargs.get("ad")
+        if ds is None or ad is None:
+            ds = yt.load(file_path)
+            ad = ds.all_data()
+        self._ds = ds
+        self._ad = ad
+        if comp == "halo":
+            ptype = "dark_matter"
+            pos_x = _yt_get_field(ad, [(ptype, "particle_position_x")])
+            pos_y = _yt_get_field(ad, [(ptype, "particle_position_y")])
+            pos_z = _yt_get_field(ad, [(ptype, "particle_position_z")])
+            vel_x = _yt_get_field(ad, [(ptype, "particle_velocity_x")])
+            vel_y = _yt_get_field(ad, [(ptype, "particle_velocity_y")])
+            vel_z = _yt_get_field(ad, [(ptype, "particle_velocity_z")])
+            mass = _yt_get_field(ad, [(ptype, "particle_mass")])
+            self.id = _yt_get_field(
+                ad,
+                [(ptype, "particle_index"), (ptype, "particle_id"),
+                 (ptype, "particle_identifier")],
+                default=np.arange(pos_x.size)
+            )
+        elif comp == "stars":
+            ptype = "star"
+            pos_x = _yt_get_field(ad, [(ptype, "particle_position_x")])
+            pos_y = _yt_get_field(ad, [(ptype, "particle_position_y")])
+            pos_z = _yt_get_field(ad, [(ptype, "particle_position_z")])
+            vel_x = _yt_get_field(ad, [(ptype, "particle_velocity_x")])
+            vel_y = _yt_get_field(ad, [(ptype, "particle_velocity_y")])
+            vel_z = _yt_get_field(ad, [(ptype, "particle_velocity_z")])
+            mass = _yt_get_field(ad, [(ptype, "particle_mass")])
+            self.id = _yt_get_field(
+                ad,
+                [(ptype, "particle_index"), (ptype, "particle_id"),
+                 (ptype, "particle_identifier")],
+                default=np.arange(pos_x.size)
+            )
+        elif comp == "gas":
+            pos_x = _yt_get_field(ad, [("index", "x"), ("gas", "x")])
+            pos_y = _yt_get_field(ad, [("index", "y"), ("gas", "y")])
+            pos_z = _yt_get_field(ad, [("index", "z"), ("gas", "z")])
+            vel_x = _yt_get_field(ad, [("gas", "velocity_x")])
+            vel_y = _yt_get_field(ad, [("gas", "velocity_y")])
+            vel_z = _yt_get_field(ad, [("gas", "velocity_z")])
+            try:
+                mass = _yt_get_field(ad, [("gas", "cell_mass")])
+            except KeyError:
+                rho = _yt_get_field(ad, [("gas", "density")])
+                vol = _yt_get_field(ad, [("index", "cell_volume")])
+                mass = rho * vol
+            self.id = np.arange(pos_x.size)
         else:
-            pos = pos * self._p.simutokpc
-        vel = vel * self._p.simutokms
-        self.pos3d = pos.reshape(int(len(pos)/3),3)
-        self.vel3d = vel.reshape(int(len(vel)/3),3)
-        self.mass = mass * self._p.simutoMsun
+            raise ValueError("Unknown component: {}".format(comp))
+        ### coordinates ###
+        if comov:
+            pos_x = pos_x.to("kpc").value / self._p.aexp
+            pos_y = pos_y.to("kpc").value / self._p.aexp
+            pos_z = pos_z.to("kpc").value / self._p.aexp
+        else:
+            pos_x = pos_x.to("kpc").value
+            pos_y = pos_y.to("kpc").value
+            pos_z = pos_z.to("kpc").value
+        vel_x = vel_x.to("km/s").value
+        vel_y = vel_y.to("km/s").value
+        vel_z = vel_z.to("km/s").value
+        self.pos3d = np.vstack((pos_x, pos_y, pos_z)).T
+        self.vel3d = np.vstack((vel_x, vel_y, vel_z)).T
+        self.mass = mass.to("Msun").value
+        self.id = np.array(self.id)
 
     def halo_Only(self, center,n , r200,simple=False):
         ### particles ##
@@ -62,6 +127,4 @@ class Component:
     def shift(self,center):
         self.pos3d = self.pos3d - center
         self._center_history = np.vstack((self._center_history,center))
-
-
 

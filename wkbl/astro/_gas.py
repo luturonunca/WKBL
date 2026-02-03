@@ -5,22 +5,63 @@ class _gas(comp.Component):
     def __init__(self, file_path,p,dens=True, **kwargs):
         self.get_sigma = kwargs.get('virial',p.nmlexist)
         comov = kwargs.get('comov',False)
-        super().__init__(file_path,"gas",p,comov=comov)
-        ok, temp = self.uns.getData("gas","temp")
-        ok, rho = self.uns.getData("gas","rho")
-        ok, pot = self.uns.getData("gas","pot")
-        ok, acc = self.uns.getData("gas","acc")
-        ok, self.pres = self.uns.getData("hydro","4")
-        ok, self.met = self.uns.getData("hydro","5")
-        temp2 = self.pres/rho
+        ds = kwargs.get("ds")
+        ad = kwargs.get("ad")
+        super().__init__(file_path, "gas", p, comov=comov, ds=ds, ad=ad)
+        try:
+            rho = comp._yt_get_field(self._ad, [("gas", "density")])
+            self.rho = rho.to("Msun/kpc**3").value
+        except KeyError:
+            self.rho = np.zeros(len(self.mass))
+        try:
+            temp = comp._yt_get_field(self._ad, [("gas", "temperature")])
+            self.temp = temp.to("K").value
+        except KeyError:
+            self.temp = np.zeros(len(self.mass))
+        try:
+            self.pot = np.array(
+                comp._yt_get_field(self._ad, [("gas", "potential")]).value
+            )
+        except KeyError:
+            self.pot = np.zeros(len(self.mass))
+        try:
+            acc_x = comp._yt_get_field(self._ad, [("gas", "acceleration_x")]).value
+            acc_y = comp._yt_get_field(self._ad, [("gas", "acceleration_y")]).value
+            acc_z = comp._yt_get_field(self._ad, [("gas", "acceleration_z")]).value
+            self.acc = np.vstack((acc_x, acc_y, acc_z)).T
+        except KeyError:
+            self.acc = np.zeros((len(self.mass), 3))
+        try:
+            pres = comp._yt_get_field(
+                self._ad,
+                [("gas", "pressure"), ("gas", "thermal_pressure")],
+            )
+            try:
+                self.pres = pres.to("code_pressure").value
+            except Exception:
+                self.pres = pres.value
+        except KeyError:
+            self.pres = np.zeros(len(self.mass))
+        self.pres = np.array(self.pres)
+        try:
+            self.met = comp._yt_get_field(
+                self._ad,
+                [("gas", "metallicity"), ("gas", "metal")],
+            ).value
+        except KeyError:
+            self.met = np.zeros(len(self.mass))
+        self.met = np.array(self.met)
+        if len(self.pres) == len(self.rho) and len(self.rho) > 0:
+            temp2 = self.pres / self.rho
         #= self.pres/rho
-        self.rho =  rho * self._p.simutoMsun / (self._p.simutokpc**3)
-        self.pot = pot * self._p.unitm * (self._p.unitl/self._p.unitt)**2
-        self.acc = acc * self._p.unitl / self._p.unitt**2
-        ok, hsml = self.uns.getData("gas","hsml")
-        if (comov):
-            hsml/=self._p.aexp
-        self.hsml = hsml * self._p.simutokpc
+        try:
+            cell_vol = comp._yt_get_field(self._ad, [("index", "cell_volume")])
+            hsml = cell_vol.to("kpc**3").value ** (1.0 / 3.0)
+        except KeyError:
+            hsml = np.zeros(len(self.mass))
+        if comov:
+            hsml /= self._p.aexp
+        self.hsml = hsml
         if self._p.SHIFT:
             shift1 = (np.random.rand(len(hsml))-0.5)*self.hsml
             shift2 = (np.random.rand(len(hsml))-0.5)*self.hsml
@@ -29,10 +70,14 @@ class _gas(comp.Component):
             self.pos3d[:,1]+=shift2
             self.pos3d[:,2]+=shift3
         self.tokelvin = self._p.mH / (1.3806200e-16) * (self._p.unitl / self._p.unitt)**2
-        self.temp = temp * self.tokelvin
         if (self.get_sigma):
-            ok, sigma = self.uns.getData("hydro",str(self._p.nener))
-            self.sigma2 = sigma*(self._p.simutokms**2)
+            try:
+                sigma = comp._yt_get_field(
+                    self._ad, [("gas", "velocity_dispersion")]
+                ).to("km/s").value
+                self.sigma2 = sigma**2
+            except KeyError:
+                self.sigma2 = np.zeros(len(self.mass))
             self.cs2 = (1.6667-1.) * self.pres * (self._p.simutokms**2)
             g_star = 1.6
             

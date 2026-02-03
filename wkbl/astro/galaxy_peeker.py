@@ -2,6 +2,7 @@
 Galaxy_Hound: load, center, and rotate RAMSES-style galaxy snapshots.
 """
 import numpy as np
+import yt
 from . import  _dark_matter as d
 from . import _stars as s
 from . import _gas as g
@@ -53,6 +54,8 @@ class Galaxy_Hound:
         # initialize simu parameters
         self.p = nbe.Info_sniffer(file_path, newage=newage)
         # dicern on ramses versions
+        self.ds = yt.load(file_path)
+        self.ad = self.ds.all_data()
 
         ############################### ARGUMENTS ##############################
         gas             = kwargs.get('gas'             ,True ) # Load gas
@@ -76,17 +79,24 @@ class Galaxy_Hound:
         # dark matter
         if self.n_dm > 0:
             if not self.quiet: print("loading Dark matter..")
-            self.dm = d._dark_matter(file_path,self.p,comov=comov,rs=rockstar_path)
+            self.dm = d._dark_matter(
+                file_path,
+                self.p,
+                comov=comov,
+                rs=rockstar_path,
+                ds=self.ds,
+                ad=self.ad,
+            )
             self._dms = True
         # stars
         if self.n_st > 0 and self.dmo==False:
             if not self.quiet: print("loading Stars..")
-            self.st = s._stars(file_path,self.p, comov=comov)
+            self.st = s._stars(file_path, self.p, comov=comov, ds=self.ds, ad=self.ad)
             self._sts = True
             # where there is stars there is gas
             if  gas==True:
                 if not self.quiet: print("loading Gas..")
-                self.gs = g._gas(file_path, self.p,comov=comov)
+                self.gs = g._gas(file_path, self.p, comov=comov, ds=self.ds, ad=self.ad)
                 self._gss = True
         else:
             self.dmo = True
@@ -261,4 +271,3 @@ class Galaxy_Hound:
         if (self._sts):self.st.vel_frame(self.com_vx,self.com_vy,self.com_vz)
         if (self._gss):self.gs.vel_frame(self.com_vx,self.com_vy,self.com_vz)
         ##########################################################
-

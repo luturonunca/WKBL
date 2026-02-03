@@ -7,16 +7,31 @@ class _stars(comp.Component):
         dens = kwargs.get('dens',False)
         comov = kwargs.get('comov',False)
         r_search = kwargs.get('r_search',200.)
+        ds = kwargs.get("ds")
+        ad = kwargs.get("ad")
         try:
             self.sf_info = sfi.SF_info(file_path,p,comov=comov)
             self.gotsfInfo = True
         except:
             self.gotsfInfo = False
-        super().__init__(file_path,"stars",p,comov=comov)
-        ok, age = self.uns.getData("stars","age")
-        ok, self.metal = self.uns.getData("stars","metal")
-        ok, self.id = self.uns.getData("all","id")
-        self.age = age *self._p.unitt / (3600.*24.*365*1e9) / self._p.aexp**2 # stars age to Gyrs
+        super().__init__(file_path, "stars", p, comov=comov, ds=ds, ad=ad)
+        try:
+            age = comp._yt_get_field(
+                self._ad,
+                [("star", "particle_age"), ("star", "age")],
+            )
+            self.age = age.to("Gyr").value
+        except KeyError:
+            self.age = np.zeros(len(self.mass))
+        try:
+            self.metal = comp._yt_get_field(
+                self._ad,
+                [("star", "particle_metallicity"), ("star", "metallicity"),
+                 ("star", "metal")],
+            )
+        except KeyError:
+            self.metal = np.zeros(len(self.mass))
+        self.metal = np.array(self.metal)
         
     def halo_Only(self, center, n, r200, simple=False):
         #### sf history ####
