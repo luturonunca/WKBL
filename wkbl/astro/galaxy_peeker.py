@@ -1,3 +1,6 @@
+"""
+Galaxy_Hound: load, center, and rotate RAMSES-style galaxy snapshots.
+"""
 import numpy as np
 from . import  _dark_matter as d
 from . import _stars as s
@@ -10,9 +13,37 @@ from . import nbody_essentials as nbe
 class Galaxy_Hound:
     def __init__(self, file_path,getcen=False,**kwargs):
         """
-        Main Object: creates and object that loads all galaxy components and
-        gives axes for numpy arrays for every variable from every particle 
-        or cell.
+        Load a simulation snapshot and initialize particle components.
+
+        This is the main entry point for analysis workflows. It loads dark
+        matter, stars, and gas (if present), exposes their particle arrays,
+        and prepares metadata through Info_sniffer.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to the snapshot directory.
+        getcen : bool, optional
+            If True, attempt to compute and store the halo center on init.
+        gas : bool, optional
+            Load gas particles if available.
+        dmo : bool, optional
+            Dark-matter-only mode (skip stars/gas).
+        comov : bool, optional
+            Use comoving coordinates if True.
+        rockstar_path : str, optional
+            Path to Rockstar catalogs for subhalo data.
+        quiet : bool, optional
+            Suppress console output when True.
+
+        Notes
+        -----
+        Typical workflow:
+        - load with Galaxy_Hound(...)
+        - compute center (nbody_essentials.real_center or getcen)
+        - shift with center_shift(...)
+        - compute virial radii with r_virial(...)
+        - rotate with rotate_galaxy(...)
         """
         # save path to snapshot
         self.file = file_path
@@ -62,13 +93,25 @@ class Galaxy_Hound:
 
     def r_virial(self,r_max=600,r_min=0.5,rotate=True,n=2.5,bins=512):
         """
-        once the center have been defined this function computes
-        several virial radii for the galaxy:
-        r_200 : the radius where the spherical density is 200 times
-        the critical density of the universe
-        r_97 : the radius where the spherical density is 97 times
-        the critical density of the universe
-        r_BN : virial radius as defined by Brian & Norman 1998
+        Compute virial radii and optionally rotate to a disk frame.
+
+        Requires particle positions to be centered. This computes:
+        - r_200: density = 200 * rho_crit
+        - r_97 : density = 97 * rho_crit
+        - r_BN : Bryan & Norman (1998) virial radius
+
+        Parameters
+        ----------
+        r_max : float
+            Maximum radius (kpc) for radial sampling.
+        r_min : float
+            Minimum radius (kpc) used for rotation window.
+        rotate : bool
+            If True, rotate galaxy to align with its disk.
+        n : float
+            Halo selection multiplier (n * r200) for redefine().
+        bins : int
+            Number of radial bins used in the density profile.
         """
         # initializing
         rmax_rot = self.rmax_rot
@@ -110,6 +153,14 @@ class Galaxy_Hound:
         self.redefine(n)
 
     def center_shift(self,nucenter):
+        """
+        Shift all loaded components to a new center.
+
+        Parameters
+        ----------
+        nucenter : array-like, shape (3,)
+            New center in the current coordinate system.
+        """
         self.center = np.zeros(3)
         if (self._dms):
             self.dm.shift(nucenter)
@@ -119,6 +170,16 @@ class Galaxy_Hound:
             self.gs.shift(nucenter)
 
     def redefine(self,n,simple=False):
+        """
+        Restrict loaded components to the halo region (n * rBN).
+
+        Parameters
+        ----------
+        n : float
+            Multiplier for the virial radius defining the halo region.
+        simple : bool, optional
+            If True, skip expensive fields where supported.
+        """
         if (self._dms):
             self.dm.halo_Only(self.center, n, self.rBN,simple=simple)
         if (self._sts):
@@ -127,6 +188,18 @@ class Galaxy_Hound:
             self.gs.halo_Only(self.center, n, self.rBN,simple=simple)
 
     def rotate_galaxy(self,rmin=3,rmax=10,comp='st',affect=True):
+        """
+        Align the galaxy to a disk frame using the mass distribution tensor.
+
+        Parameters
+        ----------
+        rmin, rmax : float
+            Radial window (kpc) used to define the disk plane.
+        comp : str
+            Component to use for the rotation ("st" or "dm").
+        affect : bool
+            If True, apply the rotation to loaded components.
+        """
         if comp == 'st':
             r2 = (self.st.pos3d[:,0])**2 +(self.st.pos3d[:,1])**2 +(self.st.pos3d[:,2])**2
             pos_ring = self.st.pos3d[(r2<rmax**2)&(r2>rmin**2)]
@@ -154,6 +227,14 @@ class Galaxy_Hound:
             self.gs.rotate(T)
 
     def frame_of_ref(self,r):
+        """
+        Compute halo velocity frame and shift velocities accordingly.
+
+        Parameters
+        ----------
+        r : array-like
+            Radial distances used to select particles for the frame.
+        """
         ############################################################
         # substract the average speed of the system
         positions = vels = np.array([], dtype=np.int64).reshape(0,3)
@@ -180,5 +261,4 @@ class Galaxy_Hound:
         if (self._sts):self.st.vel_frame(self.com_vx,self.com_vy,self.com_vz)
         if (self._gss):self.gs.vel_frame(self.com_vx,self.com_vy,self.com_vz)
         ##########################################################
-
 
