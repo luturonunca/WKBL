@@ -1,6 +1,11 @@
 # python compiled #
 ###################
 *.pyc
+*.swp
+*.swo
+*.swpx
+*.swn
+**/.ipynb_checkpoints/
 
 # Images #
 ##########
