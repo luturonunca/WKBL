@@ -364,7 +364,47 @@ def frame_size_linear(z, size_min, size_max, size_max2,
 
 def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
                     Xi=0, Yi=1, Zi=2, RI=None, Rx=None,
-                    pixel_size=None, max_subcell=None):
+                    pixel_size=None, max_subcell=None, interp_mode="native",
+                    refine_factor=1.0):
+    """
+    Project gas mass into face-on and edge-on images with AMR-aware subcell splitting.
+
+    Parameters
+    ----------
+    simu : object
+        Simulation container with gas (simu.gs.*) and stars (simu.st.*) arrays.
+    rotate : bool
+        If True, compute a rotation matrix from the stellar ring (rmin<r<rmax).
+    rmax, rmin : float
+        Radial bounds (same units as positions) for the stellar ring used in rotation.
+    outr : float
+        Half-size of the cubic selection box for gas cells (same units as positions).
+    Xi, Yi, Zi : int
+        Axis indices for projection.
+    RI : (3,3) array
+        Identity rotation (or base orientation) used when rotate=False.
+    Rx : (3,3) array
+        Rotation matrix for edge-on view (multiplied as Rx @ T).
+    pixel_size : float or None
+        Output image pixel size. If None, defaults to min gas cell size in native/refine modes.
+    max_subcell : float or None
+        Maximum subcell size used for AMR splitting. Controls unigrid-like resolution.
+    interp_mode : {"native", "unigrid", "refine"}
+        - "native": pixel_size=max_subcell=min(cell_size)
+        - "unigrid": requires pixel_size and max_subcell explicitly
+        - "refine": uses max_subcell=refine_factor*min(cell_size)
+    refine_factor : float
+        Subcell size factor used when interp_mode="refine".
+
+    Returns
+    -------
+    imgface : 2D ndarray
+        Face-on projected gas image.
+    imgedge : 2D ndarray
+        Edge-on projected gas image.
+    T : (3,3) ndarray
+        Rotation matrix used for the projection.
+    """
     if rmax is None or rmin is None:
         raise ValueError("rmax and rmin are required.")
     if outr is None:
@@ -412,16 +452,29 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     cell_size = simu.gs.hsml[sel]
     quantity = simu.gs.mass[sel]
 
-    if pixel_size is None:
-        pixel_size = np.min(cell_size)  # match finest resolution
+    if interp_mode == "native":
+        if pixel_size is None:
+            pixel_size = np.min(cell_size)  # match finest resolution
+        if max_subcell is None:
+            max_subcell = pixel_size
+    elif interp_mode == "unigrid":
+        if pixel_size is None or max_subcell is None:
+            raise ValueError("unigrid mode requires pixel_size and max_subcell.")
+    elif interp_mode == "refine":
+        if refine_factor <= 0:
+            raise ValueError("refine_factor must be > 0.")
+        if pixel_size is None:
+            pixel_size = np.min(cell_size)
+        if max_subcell is None:
+            max_subcell = refine_factor * np.min(cell_size)
+    else:
+        raise ValueError("interp_mode must be 'native', 'unigrid', or 'refine'.")
     print("{0:.3f} pc".format(pixel_size * 1000))
     bounds = (-outr, outr, -outr, outr)   # x/y extent of domain
     nx = int((bounds[1] - bounds[0]) / pixel_size)
     ny = int((bounds[3] - bounds[2]) / pixel_size)
     img_shape = (nx, ny)
     # pixel_size =  2*simu.gs.hsml.min()
-    if max_subcell is None:
-        max_subcell = pixel_size  # choose appropriately
 
     imgface = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
                                          img_shape, bounds, pixel_size, max_subcell, T)
