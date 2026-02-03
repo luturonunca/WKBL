@@ -156,7 +156,8 @@ def project_cells_split_rotate(x, y, z, cell_size, quantity, quantity_type,
 
 @njit(parallel=True)
 def project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
-                                    img_shape, bounds, pixel_size, max_subcell, R):
+                                    img_shape, bounds, pixel_size, max_subcell, R,
+                                    min_cell_size):
     """
     Split cells into subcells, evaluate density with a per-cell linear gradient,
     rotate, project, and accumulate into the image.
@@ -193,9 +194,12 @@ def project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
                     sz = z0 + (iz + 0.5) * ls
                     dz = sz - cz
 
-                    rho = rho0 + gx * dx + gy * dy + gz * dz
-                    if rho < 0.0:
-                        rho = 0.0
+                    if l <= min_cell_size:
+                        rho = rho0
+                    else:
+                        rho = rho0 + gx * dx + gy * dy + gz * dz
+                        if rho < 0.0:
+                            rho = 0.0
 
                     rx = R[0,0]*sx + R[0,1]*sy + R[0,2]*sz
                     ry = R[1,0]*sx + R[1,1]*sy + R[1,2]*sz
@@ -229,7 +233,8 @@ def project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
     return img
 
 
-def compute_density_gradients(pos, density, cell_size, k=32, limiter="none"):
+def compute_density_gradients(pos, density, cell_size, k=32, limiter="none",
+                              mode="knn", finer_only=False):
     """
     Estimate per-cell density gradients using least-squares on k nearest neighbors.
     Optionally apply a monotonicity limiter to keep reconstructions within
@@ -240,16 +245,44 @@ def compute_density_gradients(pos, density, cell_size, k=32, limiter="none"):
     if n < 4:
         return grad
 
-    k_use = min(k + 1, n)
     tree = cKDTree(pos)
+    k_use = min(k + 1, n)
     _, idxs = tree.query(pos, k=k_use)
 
     for i in range(n):
-        nbrs = idxs[i]
-        if nbrs[0] == i:
-            nbrs = nbrs[1:]
+        if mode == "cell_volume":
+            radius = 0.5 * cell_size[i] * np.sqrt(3.0)
+            cand = tree.query_ball_point(pos[i], r=radius)
+            if len(cand) == 0:
+                nbrs = np.array([], dtype=int)
+            else:
+                cand = np.array(cand, dtype=int)
+                if finer_only:
+                    cand = cand[cell_size[cand] < cell_size[i]]
+                if cand.size > 0:
+                    dp = np.abs(pos[cand] - pos[i])
+                    inside = (dp[:, 0] <= 0.5 * cell_size[i]) & \
+                             (dp[:, 1] <= 0.5 * cell_size[i]) & \
+                             (dp[:, 2] <= 0.5 * cell_size[i])
+                    cand = cand[inside]
+                nbrs = cand
         else:
-            nbrs = nbrs[:k_use - 1]
+            nbrs = idxs[i]
+            if nbrs[0] == i:
+                nbrs = nbrs[1:]
+            else:
+                nbrs = nbrs[:k_use - 1]
+            if finer_only:
+                nbrs = nbrs[cell_size[nbrs] < cell_size[i]]
+
+        if nbrs.size < 3:
+            nbrs = idxs[i]
+            if nbrs[0] == i:
+                nbrs = nbrs[1:]
+            else:
+                nbrs = nbrs[:k_use - 1]
+            if finer_only:
+                nbrs = nbrs[cell_size[nbrs] < cell_size[i]]
         if nbrs.size < 3:
             continue
         A = pos[nbrs] - pos[i]
@@ -541,7 +574,8 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
                     pixel_size=None, max_subcell=None, interp_mode="native",
                     refine_factor=1.0, interp3d=False, cube_factor=1.0,
                     return_cube=False, incell_grad=False, grad_k=32,
-                    grad_limiter="none"):
+                    grad_limiter="none", grad_mode="knn",
+                    grad_finer_only=False):
     """
     Project gas mass into face-on and edge-on images with AMR-aware subcell splitting.
 
@@ -585,6 +619,14 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     grad_limiter : {"none", "minmax"}
         If set to "minmax", scales gradients to keep subcell values within
         neighbor min/max density values.
+    grad_mode : {"knn", "cell_volume"}
+        Gradient neighbor selection: kNN or finer cells inside coarse cell volume.
+    grad_finer_only : bool
+        If True, only use neighbors with smaller cell_size for gradients.
+    grad_mode : {"knn", "cell_volume"}
+        Gradient neighbor selection: kNN or finer cells inside coarse cell volume.
+    grad_finer_only : bool
+        If True, only use neighbors with smaller cell_size for gradients.
 
     Returns
     -------
@@ -682,11 +724,16 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         density = quantity / (cell_size**3)
         pos = np.column_stack((x, y, z))
         limiter = "minmax" if grad_limiter == "minmax" else "none"
-        grad = compute_density_gradients(pos, density, cell_size, k=grad_k, limiter=limiter)
+        grad = compute_density_gradients(pos, density, cell_size, k=grad_k,
+                                         limiter=limiter, mode=grad_mode,
+                                         finer_only=grad_finer_only)
+        min_cell_size = np.min(cell_size)
         imgface = project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
-                                                  img_shape, bounds, pixel_size, max_subcell, T)
+                                                  img_shape, bounds, pixel_size, max_subcell, T,
+                                                  min_cell_size)
         imgedge = project_cells_split_rotate_grad(x, y, z, cell_size, density, grad,
-                                                  img_shape, bounds, pixel_size, max_subcell, Rx @ T)
+                                                  img_shape, bounds, pixel_size, max_subcell, Rx @ T,
+                                                  min_cell_size)
     else:
         imgface = project_cells_split_rotate(x, y, z, cell_size, quantity, 0,
                                              img_shape, bounds, pixel_size, max_subcell, T)
