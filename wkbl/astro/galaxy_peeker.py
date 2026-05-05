@@ -155,6 +155,13 @@ class Galaxy_Hound:
             )
             self._bns = True
             bns_count = len(self.bns.mass)
+            try:
+                self.bns.stage = np.array(
+                    comp._yt_get_field(self.ad, [("bns", "particle_tag")]).value,
+                    dtype=np.int32,
+                )
+            except KeyError:
+                self.bns.stage = np.zeros(bns_count, dtype=np.int32)
         else:
             bns_count = 0
         # stars
