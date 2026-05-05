@@ -51,6 +51,14 @@ class _gas(comp.Component):
         except KeyError:
             self.met = np.zeros(len(self.mass))
         self.met = np.array(self.met)
+        try:
+            self.bns_enrich = comp._yt_get_field(
+                self._ad,
+                [("gas", "bns_enrichment")],
+            ).value
+        except KeyError:
+            self.bns_enrich = np.zeros(len(self.mass))
+        self.bns_enrich = np.array(self.bns_enrich)
         if len(self.pres) == len(self.rho) and len(self.rho) > 0:
             temp2 = self.pres / self.rho
         #= self.pres/rho
@@ -85,6 +93,7 @@ class _gas(comp.Component):
         super().halo_Only(center,n , r200,simple=simple)
         in_halo = np.where(self.r <= n*r200)
         self.met = self.met[in_halo]
+        self.bns_enrich = self.bns_enrich[in_halo]
         self.pot = self.pot[in_halo]
         self.temp = self.temp[in_halo]
         self.pres = self.pres[in_halo]

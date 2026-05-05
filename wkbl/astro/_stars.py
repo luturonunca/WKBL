@@ -32,7 +32,15 @@ class _stars(comp.Component):
         except KeyError:
             self.metal = np.zeros(len(self.mass))
         self.metal = np.array(self.metal)
-        
+        try:
+            self.bns_enrich = comp._yt_get_field(
+                self._ad,
+                [("star", "particle_bns_enrichment"), ("star", "bns_enrichment")],
+            )
+        except KeyError:
+            self.bns_enrich = np.zeros(len(self.mass))
+        self.bns_enrich = np.array(self.bns_enrich)
+
     def halo_Only(self, center, n, r200, simple=False):
         #### sf history ####
         if (self.gotsfInfo):
@@ -41,6 +49,7 @@ class _stars(comp.Component):
         in_halo = np.where(self.r <= n*r200)
         self.age = self.age[in_halo]
         self.metal = self.metal[in_halo]
+        self.bns_enrich = self.bns_enrich[in_halo]
         self.r = self.r[in_halo]
  
     def shift(self,center):
