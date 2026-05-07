@@ -29,18 +29,18 @@ class Component:
         self._ds = ds
         self._ad = ad
         if comp == "halo":
-            ptype = "dark_matter"
-            pos_x = _yt_get_field(ad, [(ptype, "particle_position_x")])
-            pos_y = _yt_get_field(ad, [(ptype, "particle_position_y")])
-            pos_z = _yt_get_field(ad, [(ptype, "particle_position_z")])
-            vel_x = _yt_get_field(ad, [(ptype, "particle_velocity_x")])
-            vel_y = _yt_get_field(ad, [(ptype, "particle_velocity_y")])
-            vel_z = _yt_get_field(ad, [(ptype, "particle_velocity_z")])
-            mass = _yt_get_field(ad, [(ptype, "particle_mass")])
+            _dm_ptypes = ["dark_matter", "nbody", "io"]
+            pos_x = _yt_get_field(ad, [(t, "particle_position_x") for t in _dm_ptypes])
+            pos_y = _yt_get_field(ad, [(t, "particle_position_y") for t in _dm_ptypes])
+            pos_z = _yt_get_field(ad, [(t, "particle_position_z") for t in _dm_ptypes])
+            vel_x = _yt_get_field(ad, [(t, "particle_velocity_x") for t in _dm_ptypes])
+            vel_y = _yt_get_field(ad, [(t, "particle_velocity_y") for t in _dm_ptypes])
+            vel_z = _yt_get_field(ad, [(t, "particle_velocity_z") for t in _dm_ptypes])
+            mass = _yt_get_field(ad, [(t, "particle_mass") for t in _dm_ptypes])
             self.id = _yt_get_field(
                 ad,
-                [(ptype, "particle_index"), (ptype, "particle_id"),
-                 (ptype, "particle_identifier")],
+                [(t, f) for t in _dm_ptypes
+                 for f in ("particle_index", "particle_id", "particle_identifier")],
                 default=np.arange(pos_x.size)
             )
         elif comp in ("stars", "bns"):
