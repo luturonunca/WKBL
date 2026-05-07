@@ -186,8 +186,7 @@ class Galaxy_Hound:
         self.header = _header_summary(
             self.header_counts, dm_count, st_count, gas_count, bns_count
         )
-        # Release yt field cache — all data is now in numpy arrays.
-        # self._ad and self._ds in each component keep the cache alive otherwise.
+        # yt was only a loading intermediary — release everything once arrays are built.
         try:
             self.ds.index.clear_all_caches()
         except Exception:
@@ -198,6 +197,7 @@ class Galaxy_Hound:
                 _obj._ad = None
                 _obj._ds = None
         self.ad = None
+        self.ds = None
 
     def r_virial(self,r_max=600,r_min=0.5,rotate=True,n=2.5,bins=512):
         """
