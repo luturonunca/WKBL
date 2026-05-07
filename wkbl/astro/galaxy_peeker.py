@@ -139,6 +139,7 @@ class Galaxy_Hound:
             )
             self._dms = True
             dm_count = len(self.dm.mass)
+            self.ad.clear_data()
         else:
             dm_count = 0
         # bns particles
@@ -162,6 +163,7 @@ class Galaxy_Hound:
                 )
             except KeyError:
                 self.bns.stage = np.zeros(bns_count, dtype=np.int32)
+            self.ad.clear_data()
         else:
             bns_count = 0
         # stars
@@ -170,6 +172,7 @@ class Galaxy_Hound:
             self.st = s._stars(file_path, self.p, comov=comov, ds=self.ds, ad=self.ad)
             self._sts = True
             st_count = len(self.st.mass)
+            self.ad.clear_data()
             # where there is stars there is gas
             if  gas==True:
                 if not self.quiet: print("loading Gas..")

@@ -8,68 +8,72 @@ class _gas(comp.Component):
         ds = kwargs.get("ds")
         ad = kwargs.get("ad")
         super().__init__(file_path, "gas", p, comov=comov, ds=ds, ad=ad)
+        # Clear yt cache after pos/vel/mass are in numpy — each subsequent
+        # field read re-uses _ad but the cache is freed immediately after.
+        self._ad.clear_data()
+
+        def _get(candidates, unit=None):
+            try:
+                _f = comp._yt_get_field(self._ad, candidates)
+                result = _f.to(unit).value if unit else np.array(_f.value)
+                del _f
+                self._ad.clear_data()
+                return result
+            except KeyError:
+                return None
+
+        _n = len(self.mass)
+
+        _r = _get([("gas", "density")], "Msun/kpc**3")
+        self.rho = _r if _r is not None else np.zeros(_n)
+
+        _t = _get([("gas", "temperature")], "K")
+        self.temp = _t if _t is not None else np.zeros(_n)
+
+        _pot = _get([("gas", "potential")])
+        self.pot = _pot if _pot is not None else np.zeros(_n)
+
         try:
-            rho = comp._yt_get_field(self._ad, [("gas", "density")])
-            self.rho = rho.to("Msun/kpc**3").value
+            _ax = comp._yt_get_field(self._ad, [("gas", "acceleration_x")]).value
+            self._ad.clear_data()
+            _ay = comp._yt_get_field(self._ad, [("gas", "acceleration_y")]).value
+            self._ad.clear_data()
+            _az = comp._yt_get_field(self._ad, [("gas", "acceleration_z")]).value
+            self._ad.clear_data()
+            self.acc = np.vstack((_ax, _ay, _az)).T
         except KeyError:
-            self.rho = np.zeros(len(self.mass))
+            self.acc = np.zeros((_n, 3))
+
         try:
-            temp = comp._yt_get_field(self._ad, [("gas", "temperature")])
-            self.temp = temp.to("K").value
-        except KeyError:
-            self.temp = np.zeros(len(self.mass))
-        try:
-            self.pot = np.array(
-                comp._yt_get_field(self._ad, [("gas", "potential")]).value
-            )
-        except KeyError:
-            self.pot = np.zeros(len(self.mass))
-        try:
-            acc_x = comp._yt_get_field(self._ad, [("gas", "acceleration_x")]).value
-            acc_y = comp._yt_get_field(self._ad, [("gas", "acceleration_y")]).value
-            acc_z = comp._yt_get_field(self._ad, [("gas", "acceleration_z")]).value
-            self.acc = np.vstack((acc_x, acc_y, acc_z)).T
-        except KeyError:
-            self.acc = np.zeros((len(self.mass), 3))
-        try:
-            pres = comp._yt_get_field(
-                self._ad,
-                [("gas", "pressure"), ("gas", "thermal_pressure")],
+            _pf = comp._yt_get_field(
+                self._ad, [("gas", "pressure"), ("gas", "thermal_pressure")]
             )
             try:
-                self.pres = pres.to("code_pressure").value
+                self.pres = np.array(_pf.to("code_pressure").value)
             except Exception:
-                self.pres = pres.value
+                self.pres = np.array(_pf.value)
+            del _pf
+            self._ad.clear_data()
         except KeyError:
-            self.pres = np.zeros(len(self.mass))
-        self.pres = np.array(self.pres)
+            self.pres = np.zeros(_n)
+
+        _m = _get([("gas", "metallicity"), ("gas", "metal")])
+        self.met = _m if _m is not None else np.zeros(_n)
+
+        _eu = _get([("gas", "bns_enrichment"), ("ramses", "hydro_bns_enrichment")])
+        self.Eu = _eu if _eu is not None else np.zeros(_n)
+
         try:
-            self.met = comp._yt_get_field(
-                self._ad,
-                [("gas", "metallicity"), ("gas", "metal")],
-            ).value
+            _cv = comp._yt_get_field(self._ad, [("index", "cell_volume")])
+            hsml = _cv.to("kpc**3").value ** (1.0 / 3.0)
+            del _cv
+            self._ad.clear_data()
         except KeyError:
-            self.met = np.zeros(len(self.mass))
-        self.met = np.array(self.met)
-        try:
-            self.Eu = comp._yt_get_field(
-                self._ad,
-                [("gas", "bns_enrichment"), ("ramses", "hydro_bns_enrichment")],
-            ).value
-        except KeyError:
-            self.Eu = np.zeros(len(self.mass))
-        self.Eu = np.array(self.Eu)
-        if len(self.pres) == len(self.rho) and len(self.rho) > 0:
-            temp2 = self.pres / self.rho
-        #= self.pres/rho
-        try:
-            cell_vol = comp._yt_get_field(self._ad, [("index", "cell_volume")])
-            hsml = cell_vol.to("kpc**3").value ** (1.0 / 3.0)
-        except KeyError:
-            hsml = np.zeros(len(self.mass))
+            hsml = np.zeros(_n)
         if comov:
             hsml /= self._p.aexp
         self.hsml = hsml
+
         if self._p.SHIFT:
             shift1 = (np.random.rand(len(hsml))-0.5)*self.hsml
             shift2 = (np.random.rand(len(hsml))-0.5)*self.hsml
@@ -80,12 +84,13 @@ class _gas(comp.Component):
         self.tokelvin = self._p.mH / (1.3806200e-16) * (self._p.unitl / self._p.unitt)**2
         if (self.get_sigma):
             try:
-                sigma = comp._yt_get_field(
+                _sig = comp._yt_get_field(
                     self._ad, [("gas", "velocity_dispersion")]
                 ).to("km/s").value
-                self.sigma2 = sigma**2
+                self._ad.clear_data()
+                self.sigma2 = _sig**2
             except KeyError:
-                self.sigma2 = np.zeros(len(self.mass))
+                self.sigma2 = np.zeros(_n)
             self.cs2 = (1.6667-1.) * self.pres * (self._p.simutokms**2)
             g_star = 1.6
             
