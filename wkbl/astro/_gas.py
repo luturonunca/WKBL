@@ -34,17 +34,6 @@ class _gas(comp.Component):
         self.pot = _pot if _pot is not None else np.zeros(_n)
 
         try:
-            _ax = comp._yt_get_field(self._ad, [("gas", "acceleration_x")]).value
-            self._ad.clear_data()
-            _ay = comp._yt_get_field(self._ad, [("gas", "acceleration_y")]).value
-            self._ad.clear_data()
-            _az = comp._yt_get_field(self._ad, [("gas", "acceleration_z")]).value
-            self._ad.clear_data()
-            self.acc = np.vstack((_ax, _ay, _az)).T
-        except KeyError:
-            self.acc = np.zeros((_n, 3))
-
-        try:
             _pf = comp._yt_get_field(
                 self._ad, [("gas", "pressure"), ("gas", "thermal_pressure")]
             )
