@@ -19,23 +19,34 @@ class _bns(comp.Component):
         except Exception:
             self.stage = np.zeros(_n, dtype=np.int32)
 
-        # All BNS times use RAMSES conformal code time (same convention as
-        # particle_birth_time / t_sn2 / t_merge on disk).
-        # Conversion to physical Gyr mirrors feedback.f90:
-        #   delay_phys = delay_code * p.unitt / p.aexp**2 / SEC_PER_GYR
-        # p.time is the conformal code time of the snapshot (from info file).
+        # yt exposes TWO birth-time fields for RAMSES:
+        #   ("io", "particle_birth_time")  → physically converted (code_time)
+        #   ("io", "conformal_birth_time") → raw conformal code units (dimensionless)
+        # t_sn2 / t_merge are custom fields and stay in raw conformal units.
+        # All delay differences must therefore use conformal_birth_time, not
+        # particle_birth_time, to avoid mixing unit conventions (which was the
+        # source of the negative-delay bug).
+        # Delay conversion mirrors feedback.f90 (use_proper_time branch):
+        #   delay_conf = delay_myr * sec_per_myr * aexp_birth**2 / scale_t
+        # We approximate aexp_birth ≈ p.aexp (current snapshot).
         _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
-        _code_to_gyr = p.unitt / p.aexp**2 / _SEC_PER_GYR
+        # Age: let yt handle conformal→physical correctly via star_age field.
         try:
-            _fam   = comp._yt_get_field(self._ad, [("io", "particle_family")]).value
-            _bmask = (_fam == 6)
-            _birth = comp._yt_get_field(
-                self._ad, [("io", "particle_birth_time")]
-            ).value[_bmask]
-            self.age = (p.time - _birth) * _code_to_gyr
+            self.age = np.array(
+                comp._yt_get_field(self._ad, [("bns", "star_age")]).to("Gyr").value
+            )
         except Exception:
-            _birth = None
             self.age = np.zeros(_n)
+        # Conformal birth time + family mask — shared by all delay fields.
+        try:
+            _fam        = comp._yt_get_field(self._ad, [("io", "particle_family")]).value
+            _bmask      = (_fam == 6)
+            _birth_conf = comp._yt_get_field(
+                self._ad, [("io", "conformal_birth_time")]
+            ).value[_bmask]
+        except Exception:
+            _birth_conf = None
+            _bmask      = None
 
         try:
             self.metal = np.array(
@@ -70,7 +81,7 @@ class _bns(comp.Component):
             _t_sn2 = comp._yt_get_field(
                 self._ad, [("io", "particle_t_sn2")]
             ).value[_bmask]
-            self.delay_sn2 = (_t_sn2 - _birth) * _code_to_gyr
+            self.delay_sn2 = (_t_sn2 - _birth_conf) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.delay_sn2 = np.zeros(_n)
 
@@ -87,7 +98,7 @@ class _bns(comp.Component):
             _t_merge = comp._yt_get_field(
                 self._ad, [("io", "particle_t_merge")]
             ).value[_bmask]
-            self.delay_merge = (_t_merge - _birth) * _code_to_gyr
+            self.delay_merge = (_t_merge - _birth_conf) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.delay_merge = np.zeros(_n)
 
