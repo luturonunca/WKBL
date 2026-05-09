@@ -1,5 +1,6 @@
 from . import component as comp
 import numpy as np
+from yt.frontends.ramses.io import convert_ramses_conformal_time_to_physical_age
 
 
 class _bns(comp.Component):
@@ -19,34 +20,22 @@ class _bns(comp.Component):
         except Exception:
             self.stage = np.zeros(_n, dtype=np.int32)
 
-        # yt exposes TWO birth-time fields for RAMSES:
-        #   ("io", "particle_birth_time")  → physically converted (code_time)
-        #   ("io", "conformal_birth_time") → raw conformal code units (dimensionless)
-        # t_sn2 / t_merge are custom fields and stay in raw conformal units.
-        # All delay differences must therefore use conformal_birth_time, not
-        # particle_birth_time, to avoid mixing unit conventions (which was the
-        # source of the negative-delay bug).
-        # Delay conversion mirrors feedback.f90 (use_proper_time branch):
-        #   delay_conf = delay_myr * sec_per_myr * aexp_birth**2 / scale_t
-        # We approximate aexp_birth ≈ p.aexp (current snapshot).
         _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
-        # Age: let yt handle conformal→physical correctly via star_age field.
+        # Age since birth in Gyr — yt uses the full conformal-time lookup table.
         try:
             self.age = np.array(
                 comp._yt_get_field(self._ad, [("bns", "star_age")]).to("Gyr").value
             )
         except Exception:
             self.age = np.zeros(_n)
-        # Conformal birth time + family mask — shared by all delay fields.
+        # Family mask selects BNS particles from the ("io",...) all-particle arrays.
         try:
-            _fam        = comp._yt_get_field(self._ad, [("io", "particle_family")]).value
-            _bmask      = (_fam == 6)
-            _birth_conf = comp._yt_get_field(
-                self._ad, [("io", "conformal_birth_time")]
-            ).value[_bmask]
+            _fam   = comp._yt_get_field(self._ad, [("io", "particle_family")]).value
+            _bmask = (_fam == 6)
         except Exception:
-            _birth_conf = None
-            _bmask      = None
+            _bmask = None
+        # Snapshot physical time in Gyr — used to form absolute event times.
+        _t_cur_gyr = float(self._ds.current_time.to("Gyr"))
 
         try:
             self.metal = np.array(
@@ -78,12 +67,13 @@ class _bns(comp.Component):
                 self.vkick1 = np.zeros(_n)
 
         try:
-            _t_sn2 = comp._yt_get_field(
+            _tau_sn2 = comp._yt_get_field(
                 self._ad, [("io", "particle_t_sn2")]
             ).value[_bmask]
-            self.delay_sn2 = (_t_sn2 - _birth_conf) * p.unitt / p.aexp**2 / _SEC_PER_GYR
+            _age_sn2 = convert_ramses_conformal_time_to_physical_age(self._ds, _tau_sn2)
+            self.t_sn2 = _t_cur_gyr - _age_sn2 * p.unitt / _SEC_PER_GYR
         except Exception:
-            self.delay_sn2 = np.zeros(_n)
+            self.t_sn2 = np.zeros(_n)
 
         try:
             _f = comp._yt_get_field(self._ad, [("bns", "particle_vkick2")])
@@ -95,12 +85,13 @@ class _bns(comp.Component):
                 self.vkick2 = np.zeros(_n)
 
         try:
-            _t_merge = comp._yt_get_field(
+            _tau_merge = comp._yt_get_field(
                 self._ad, [("io", "particle_t_merge")]
             ).value[_bmask]
-            self.delay_merge = (_t_merge - _birth_conf) * p.unitt / p.aexp**2 / _SEC_PER_GYR
+            _age_merge = convert_ramses_conformal_time_to_physical_age(self._ds, _tau_merge)
+            self.t_merge = _t_cur_gyr - _age_merge * p.unitt / _SEC_PER_GYR
         except Exception:
-            self.delay_merge = np.zeros(_n)
+            self.t_merge = np.zeros(_n)
 
         try:
             self.parent_id = np.array(
@@ -126,10 +117,10 @@ class _bns(comp.Component):
         self.age     = self.age[in_halo]
         self.metal   = self.metal[in_halo]
         self.Eu      = self.Eu[in_halo]
-        self.vkick1      = self.vkick1[in_halo]
-        self.delay_sn2   = self.delay_sn2[in_halo]
-        self.vkick2      = self.vkick2[in_halo]
-        self.delay_merge = self.delay_merge[in_halo]
+        self.vkick1  = self.vkick1[in_halo]
+        self.t_sn2   = self.t_sn2[in_halo]
+        self.vkick2  = self.vkick2[in_halo]
+        self.t_merge = self.t_merge[in_halo]
         self.parent_id = self.parent_id[in_halo]
         self.m1        = self.m1[in_halo]
         self.r         = self.r[in_halo]

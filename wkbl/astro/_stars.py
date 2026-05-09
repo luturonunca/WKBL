@@ -18,7 +18,7 @@ class _stars(comp.Component):
         try:
             age = comp._yt_get_field(
                 self._ad,
-                [("star", "particle_age"), ("star", "age")],
+                [("star", "star_age"), ("star", "particle_age"), ("star", "age")],
             )
             self.age = age.to("Gyr").value
         except KeyError:
