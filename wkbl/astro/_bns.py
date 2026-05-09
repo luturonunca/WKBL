@@ -18,14 +18,21 @@ class _bns(comp.Component):
         except KeyError:
             self.stage = np.zeros(_n, dtype=np.int32)
 
+        # birth_time: prefer yt-derived particle_age (handles conformal→Gyr
+        # conversion for cosmological runs); fall back to raw code-time value.
         try:
-            age = comp._yt_get_field(
-                self._ad,
-                [("bns", "particle_age"), ("bns", "particle_birth_time")],
-            )
-            self.age = age.to("Gyr").value
-        except KeyError:
-            self.age = np.zeros(_n)
+            self.age = comp._yt_get_field(
+                self._ad, [("bns", "particle_age")]
+            ).to("Gyr").value
+        except Exception:
+            try:
+                self.age = np.array(
+                    comp._yt_get_field(
+                        self._ad, [("bns", "particle_birth_time")]
+                    ).value
+                )
+            except Exception:
+                self.age = np.zeros(_n)
 
         try:
             self.metal = np.array(
@@ -34,45 +41,49 @@ class _bns(comp.Component):
                     [("bns", "particle_metallicity"), ("bns", "particle_metal")],
                 ).value
             )
-        except KeyError:
+        except Exception:
             self.metal = np.zeros(_n)
 
         try:
             self.Eu = np.array(
                 comp._yt_get_field(
                     self._ad,
-                    [("bns", "particle_bns_enrichment"), ("bns", "bns_enrichment")],
+                    [("bns", "particle_bns_enrichment")],
                 ).value
             )
-        except KeyError:
+        except Exception:
             self.Eu = np.zeros(_n)
 
         try:
-            self.vkick1 = comp._yt_get_field(
-                self._ad, [("bns", "particle_vkick1")]
-            ).to("km/s").value
-        except KeyError:
-            self.vkick1 = np.zeros(_n)
+            _f = comp._yt_get_field(self._ad, [("bns", "particle_vkick1")])
+            self.vkick1 = _f.to("km/s").value
+        except Exception:
+            try:
+                self.vkick1 = np.array(_f.value) * p.simutokms
+            except Exception:
+                self.vkick1 = np.zeros(_n)
 
         try:
             self.t_sn2 = np.array(
                 comp._yt_get_field(self._ad, [("bns", "particle_t_sn2")]).value
             )
-        except KeyError:
+        except Exception:
             self.t_sn2 = np.zeros(_n)
 
         try:
-            self.vkick2 = comp._yt_get_field(
-                self._ad, [("bns", "particle_vkick2")]
-            ).to("km/s").value
-        except KeyError:
-            self.vkick2 = np.zeros(_n)
+            _f = comp._yt_get_field(self._ad, [("bns", "particle_vkick2")])
+            self.vkick2 = _f.to("km/s").value
+        except Exception:
+            try:
+                self.vkick2 = np.array(_f.value) * p.simutokms
+            except Exception:
+                self.vkick2 = np.zeros(_n)
 
         try:
             self.t_merge = np.array(
                 comp._yt_get_field(self._ad, [("bns", "particle_t_merge")]).value
             )
-        except KeyError:
+        except Exception:
             self.t_merge = np.zeros(_n)
 
         try:
@@ -80,15 +91,17 @@ class _bns(comp.Component):
                 comp._yt_get_field(self._ad, [("bns", "particle_parent_id")]).value,
                 dtype=np.int64,
             )
-        except KeyError:
+        except Exception:
             self.parent_id = np.zeros(_n, dtype=np.int64)
 
         try:
-            self.m1 = comp._yt_get_field(
-                self._ad, [("bns", "particle_m1")]
-            ).to("Msun").value
-        except KeyError:
-            self.m1 = np.zeros(_n)
+            _f = comp._yt_get_field(self._ad, [("bns", "particle_m1")])
+            self.m1 = _f.to("Msun").value
+        except Exception:
+            try:
+                self.m1 = np.array(_f.value) * p.simutoMsun
+            except Exception:
+                self.m1 = np.zeros(_n)
 
     def halo_Only(self, center, n, r200, simple=False):
         super().halo_Only(center, n, r200, simple=simple)
