@@ -16,12 +16,9 @@ class _stars(comp.Component):
             self.gotsfInfo = False
         super().__init__(file_path, "stars", p, comov=comov, ds=ds, ad=ad)
         try:
-            age = comp._yt_get_field(
-                self._ad,
-                [("star", "star_age"), ("star", "particle_age"), ("star", "age")],
-            )
-            self.age = age.to("Gyr").value
-        except KeyError:
+            _t0 = comp._yt_get_field(self._ad, [("star", "particle_birth_time"), ("star", "age")])
+            self.age = (self._ds.current_time - _t0).to("Gyr").value
+        except Exception:
             self.age = np.zeros(len(self.mass))
         try:
             self.metal = comp._yt_get_field(

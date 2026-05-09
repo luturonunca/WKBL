@@ -24,11 +24,10 @@ class _bns(comp.Component):
             self.stage = np.zeros(_n, dtype=np.int32)
 
         _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
-        # Age since birth in Gyr — yt uses the full conformal-time lookup table.
+        # Age since birth in Gyr: current_time - particle_birth_time (yt converts birth time correctly).
         try:
-            self.age = np.array(
-                comp._yt_get_field(self._ad, [("bns", "star_age")]).to("Gyr").value
-            )
+            _t0 = comp._yt_get_field(self._ad, [("bns", "particle_birth_time"), ("bns", "age")])
+            self.age = (self._ds.current_time - _t0).to("Gyr").value
         except Exception:
             self.age = np.zeros(_n)
         # Family mask selects BNS particles from the ("io",...) all-particle arrays.
