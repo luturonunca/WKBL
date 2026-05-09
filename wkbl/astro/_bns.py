@@ -63,12 +63,22 @@ class _bns(comp.Component):
             except Exception:
                 self.vkick1 = np.zeros(_n)
 
+        # t_sn2 and t_merge are absolute conformal times (negative).
+        # Store as delays from birth_time so values are positive and meaningful.
+        # Unit: code conformal time. Physical Myr (non-cosmo) = delay * p.unitt / 3.1536e13
+        # For cosmological runs an extra aexp_form^2 factor is needed per particle.
         try:
-            self.t_sn2 = np.array(
+            _birth = np.array(
+                comp._yt_get_field(
+                    self._ad, [("bns", "particle_birth_time")]
+                ).value
+            )
+            _t_sn2 = np.array(
                 comp._yt_get_field(self._ad, [("bns", "particle_t_sn2")]).value
             )
+            self.delay_sn2 = _t_sn2 - _birth
         except Exception:
-            self.t_sn2 = np.zeros(_n)
+            self.delay_sn2 = np.zeros(_n)
 
         try:
             _f = comp._yt_get_field(self._ad, [("bns", "particle_vkick2")])
@@ -80,11 +90,12 @@ class _bns(comp.Component):
                 self.vkick2 = np.zeros(_n)
 
         try:
-            self.t_merge = np.array(
+            _t_merge = np.array(
                 comp._yt_get_field(self._ad, [("bns", "particle_t_merge")]).value
             )
+            self.delay_merge = _t_merge - _birth
         except Exception:
-            self.t_merge = np.zeros(_n)
+            self.delay_merge = np.zeros(_n)
 
         try:
             self.parent_id = np.array(
@@ -110,10 +121,10 @@ class _bns(comp.Component):
         self.age     = self.age[in_halo]
         self.metal   = self.metal[in_halo]
         self.Eu      = self.Eu[in_halo]
-        self.vkick1    = self.vkick1[in_halo]
-        self.t_sn2     = self.t_sn2[in_halo]
-        self.vkick2    = self.vkick2[in_halo]
-        self.t_merge   = self.t_merge[in_halo]
+        self.vkick1      = self.vkick1[in_halo]
+        self.delay_sn2   = self.delay_sn2[in_halo]
+        self.vkick2      = self.vkick2[in_halo]
+        self.delay_merge = self.delay_merge[in_halo]
         self.parent_id = self.parent_id[in_halo]
         self.m1        = self.m1[in_halo]
         self.r         = self.r[in_halo]
