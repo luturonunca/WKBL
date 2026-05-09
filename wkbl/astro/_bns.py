@@ -19,20 +19,20 @@ class _bns(comp.Component):
         except Exception:
             self.stage = np.zeros(_n, dtype=np.int32)
 
-        # Read birth_time, t_sn2, t_merge through ("io", ...) to avoid yt
-        # applying cosmological conversions inconsistently across field types.
-        # All three are raw conformal code time; delays are their differences.
+        # All BNS times use RAMSES conformal code time (same convention as
+        # particle_birth_time / t_sn2 / t_merge on disk).
+        # Conversion to physical Gyr mirrors feedback.f90:
+        #   delay_phys = delay_code * p.unitt / p.aexp**2 / SEC_PER_GYR
+        # p.time is the conformal code time of the snapshot (from info file).
         _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
+        _code_to_gyr = p.unitt / p.aexp**2 / _SEC_PER_GYR
         try:
             _fam   = comp._yt_get_field(self._ad, [("io", "particle_family")]).value
             _bmask = (_fam == 6)
             _birth = comp._yt_get_field(
                 self._ad, [("io", "particle_birth_time")]
             ).value[_bmask]
-            if tcur_code is not None:
-                self.age = (tcur_code - _birth) * p.unitt / _SEC_PER_GYR
-            else:
-                self.age = np.zeros(_n)
+            self.age = (p.time - _birth) * _code_to_gyr
         except Exception:
             _birth = None
             self.age = np.zeros(_n)
@@ -70,7 +70,7 @@ class _bns(comp.Component):
             _t_sn2 = comp._yt_get_field(
                 self._ad, [("io", "particle_t_sn2")]
             ).value[_bmask]
-            self.delay_sn2 = (_t_sn2 - _birth) * p.unitt / _SEC_PER_GYR
+            self.delay_sn2 = (_t_sn2 - _birth) * _code_to_gyr
         except Exception:
             self.delay_sn2 = np.zeros(_n)
 
@@ -87,7 +87,7 @@ class _bns(comp.Component):
             _t_merge = comp._yt_get_field(
                 self._ad, [("io", "particle_t_merge")]
             ).value[_bmask]
-            self.delay_merge = (_t_merge - _birth) * p.unitt / _SEC_PER_GYR
+            self.delay_merge = (_t_merge - _birth) * _code_to_gyr
         except Exception:
             self.delay_merge = np.zeros(_n)
 

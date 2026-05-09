@@ -154,7 +154,6 @@ class Galaxy_Hound:
                 comov=comov,
                 ds=self.ds,
                 ad=self.ad,
-                tcur_code=self._tcur_code,
             )
             self._bns = True
             bns_count = len(self.bns.mass)

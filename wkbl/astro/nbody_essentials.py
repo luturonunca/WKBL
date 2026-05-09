@@ -63,7 +63,8 @@ class Info_sniffer:
         self._vars = _vars
         self.h = _vars["H0"]/1e2       # hubble expansion rate
         self.aexp = _vars["aexp"]      # expantion parameter
-        self.Z = -1. + (1./ self.aexp) # redshift 
+        self.time = _vars["time"]      # RAMSES conformal code time of snapshot
+        self.Z = -1. + (1./ self.aexp) # redshift
         self.msuntokg = 1.99844e30   
         self.pctocm = 3.08567758e18 #but well
         self.G = 6.67384e-11 * self.msuntokg / ((self.pctocm*10)**3)#kpc^3 Msun^-1 s^-2
