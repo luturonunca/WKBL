@@ -153,6 +153,7 @@ class Galaxy_Hound:
                 comov=comov,
                 ds=self.ds,
                 ad=self.ad,
+                tcur_code=self._tcur_code,
             )
             self._bns = True
             bns_count = len(self.bns.mass)
@@ -182,11 +183,14 @@ class Galaxy_Hound:
         self.header = _header_summary(
             self.header_counts, dm_count, st_count, gas_count, bns_count
         )
-        # Capture current time in Gyr before releasing yt objects.
+        # Capture current time before releasing yt objects.
         try:
             self.current_time = float(self.ds.current_time.to("Gyr"))
         except Exception:
             self.current_time = float(self.ds.current_time) * self.p.unitt / (1e9 * 365.25 * 24 * 3600)
+        # Raw conformal code time — needed so BNS age/delays use the same
+        # unit convention as particle_t_sn2 / particle_t_merge (not converted).
+        self._tcur_code = float(self.ds.current_time.value)
         # yt was only a loading intermediary — release everything once arrays are built.
         try:
             self.ds.index.clear_all_caches()

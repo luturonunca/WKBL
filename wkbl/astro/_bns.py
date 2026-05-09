@@ -7,6 +7,7 @@ class _bns(comp.Component):
         comov = kwargs.get('comov', False)
         ds = kwargs.get("ds")
         ad = kwargs.get("ad")
+        tcur_code = kwargs.get("tcur_code", None)
         super().__init__(file_path, "bns", p, comov=comov, ds=ds, ad=ad)
         _n = len(self.mass)
 
@@ -15,24 +16,26 @@ class _bns(comp.Component):
                 comp._yt_get_field(self._ad, [("bns", "particle_tag")]).value,
                 dtype=np.int32,
             )
-        except KeyError:
+        except Exception:
             self.stage = np.zeros(_n, dtype=np.int32)
 
-        # birth_time: prefer yt-derived particle_age (handles conformal→Gyr
-        # conversion for cosmological runs); fall back to raw code-time value.
+        # Read birth_time, t_sn2, t_merge through ("io", ...) to avoid yt
+        # applying cosmological conversions inconsistently across field types.
+        # All three are raw conformal code time; delays are their differences.
+        _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
         try:
-            self.age = comp._yt_get_field(
-                self._ad, [("bns", "particle_age")]
-            ).to("Gyr").value
-        except Exception:
-            try:
-                self.age = np.array(
-                    comp._yt_get_field(
-                        self._ad, [("bns", "particle_birth_time")]
-                    ).value
-                )
-            except Exception:
+            _fam   = comp._yt_get_field(self._ad, [("io", "particle_family")]).value
+            _bmask = (_fam == 6)
+            _birth = comp._yt_get_field(
+                self._ad, [("io", "particle_birth_time")]
+            ).value[_bmask]
+            if tcur_code is not None:
+                self.age = (tcur_code - _birth) * p.unitt / _SEC_PER_GYR
+            else:
                 self.age = np.zeros(_n)
+        except Exception:
+            _birth = None
+            self.age = np.zeros(_n)
 
         try:
             self.metal = np.array(
@@ -63,22 +66,10 @@ class _bns(comp.Component):
             except Exception:
                 self.vkick1 = np.zeros(_n)
 
-        # Delays to SN2 and merger in Gyr (physical), consistent with bns.age / st.age.
-        # Conversion: delay_code * p.unitt / sec_per_gyr — same as yt's code_time→Gyr.
-        _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
         try:
-            _birth = np.array(
-                comp._yt_get_field(
-                    self._ad, [("bns", "particle_birth_time")]
-                ).value
-            )
-        except Exception:
-            _birth = None
-
-        try:
-            _t_sn2 = np.array(
-                comp._yt_get_field(self._ad, [("bns", "particle_t_sn2")]).value
-            )
+            _t_sn2 = comp._yt_get_field(
+                self._ad, [("io", "particle_t_sn2")]
+            ).value[_bmask]
             self.delay_sn2 = (_t_sn2 - _birth) * p.unitt / _SEC_PER_GYR
         except Exception:
             self.delay_sn2 = np.zeros(_n)
@@ -93,9 +84,9 @@ class _bns(comp.Component):
                 self.vkick2 = np.zeros(_n)
 
         try:
-            _t_merge = np.array(
-                comp._yt_get_field(self._ad, [("bns", "particle_t_merge")]).value
-            )
+            _t_merge = comp._yt_get_field(
+                self._ad, [("io", "particle_t_merge")]
+            ).value[_bmask]
             self.delay_merge = (_t_merge - _birth) * p.unitt / _SEC_PER_GYR
         except Exception:
             self.delay_merge = np.zeros(_n)
