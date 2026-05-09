@@ -1,9 +1,5 @@
 from . import component as comp
 import numpy as np
-try:
-    from yt.frontends.ramses.io import convert_ramses_conformal_time_to_physical_age
-except ImportError:
-    from yt.frontends.ramses.io import convert_ramses_ages as convert_ramses_conformal_time_to_physical_age
 
 
 class _bns(comp.Component):
@@ -24,10 +20,18 @@ class _bns(comp.Component):
             self.stage = np.zeros(_n, dtype=np.int32)
 
         _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
-        # Age since birth in Gyr: current_time - particle_birth_time (yt converts birth time correctly).
+        # Flat ΛCDM physical time at snapshot (Gyr since Big Bang).
+        _H0_s = p.H0 * 1e3 / 3.086e22
+        _om_l = p._vars["omega_l"]
+        _om_m = p._vars["omega_m"]
+        _t_cur_gyr = (2.0 / (3.0 * _H0_s * np.sqrt(_om_l))) * \
+                     np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5) / _SEC_PER_GYR
+        # Age since birth in Gyr using raw conformal birth time.
         try:
-            _t0 = comp._yt_get_field(self._ad, [("bns", "particle_birth_time"), ("bns", "age")])
-            self.age = (self._ds.current_time - _t0).to("Gyr").value
+            _tau_birth = comp._yt_get_field(
+                self._ad, [("bns", "conformal_birth_time")]
+            ).value
+            self.age = (p.time - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.age = np.zeros(_n)
         # Family mask selects BNS particles from the ("io",...) all-particle arrays.
@@ -36,8 +40,6 @@ class _bns(comp.Component):
             _bmask = (_fam == 6)
         except Exception:
             _bmask = None
-        # Snapshot physical time in Gyr — used to form absolute event times.
-        _t_cur_gyr = float(self._ds.current_time.to("Gyr"))
 
         try:
             self.metal = np.array(
@@ -72,8 +74,7 @@ class _bns(comp.Component):
             _tau_sn2 = comp._yt_get_field(
                 self._ad, [("io", "particle_t_sn2")]
             ).value[_bmask]
-            _age_sn2 = convert_ramses_conformal_time_to_physical_age(self._ds, _tau_sn2)
-            self.t_sn2 = _t_cur_gyr - _age_sn2 * p.unitt / _SEC_PER_GYR
+            self.t_sn2 = _t_cur_gyr - (p.time - _tau_sn2) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.t_sn2 = np.zeros(_n)
 
@@ -90,8 +91,7 @@ class _bns(comp.Component):
             _tau_merge = comp._yt_get_field(
                 self._ad, [("io", "particle_t_merge")]
             ).value[_bmask]
-            _age_merge = convert_ramses_conformal_time_to_physical_age(self._ds, _tau_merge)
-            self.t_merge = _t_cur_gyr - _age_merge * p.unitt / _SEC_PER_GYR
+            self.t_merge = _t_cur_gyr - (p.time - _tau_merge) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.t_merge = np.zeros(_n)
 

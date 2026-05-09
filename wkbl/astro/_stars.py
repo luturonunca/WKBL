@@ -15,9 +15,12 @@ class _stars(comp.Component):
         except:
             self.gotsfInfo = False
         super().__init__(file_path, "stars", p, comov=comov, ds=ds, ad=ad)
+        _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
         try:
-            _t0 = comp._yt_get_field(self._ad, [("star", "particle_birth_time"), ("star", "age")])
-            self.age = (self._ds.current_time - _t0).to("Gyr").value
+            _tau_birth = comp._yt_get_field(
+                self._ad, [("star", "conformal_birth_time")]
+            ).value
+            self.age = (p.time - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.age = np.zeros(len(self.mass))
         try:
