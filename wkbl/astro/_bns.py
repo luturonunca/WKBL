@@ -63,20 +63,23 @@ class _bns(comp.Component):
             except Exception:
                 self.vkick1 = np.zeros(_n)
 
-        # t_sn2 and t_merge are absolute conformal times (negative).
-        # Store as delays from birth_time so values are positive and meaningful.
-        # Unit: code conformal time. Physical Myr (non-cosmo) = delay * p.unitt / 3.1536e13
-        # For cosmological runs an extra aexp_form^2 factor is needed per particle.
+        # Delays to SN2 and merger in Gyr (physical), consistent with bns.age / st.age.
+        # Conversion: delay_code * p.unitt / sec_per_gyr — same as yt's code_time→Gyr.
+        _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
         try:
             _birth = np.array(
                 comp._yt_get_field(
                     self._ad, [("bns", "particle_birth_time")]
                 ).value
             )
+        except Exception:
+            _birth = None
+
+        try:
             _t_sn2 = np.array(
                 comp._yt_get_field(self._ad, [("bns", "particle_t_sn2")]).value
             )
-            self.delay_sn2 = _t_sn2 - _birth
+            self.delay_sn2 = (_t_sn2 - _birth) * p.unitt / _SEC_PER_GYR
         except Exception:
             self.delay_sn2 = np.zeros(_n)
 
@@ -93,7 +96,7 @@ class _bns(comp.Component):
             _t_merge = np.array(
                 comp._yt_get_field(self._ad, [("bns", "particle_t_merge")]).value
             )
-            self.delay_merge = _t_merge - _birth
+            self.delay_merge = (_t_merge - _birth) * p.unitt / _SEC_PER_GYR
         except Exception:
             self.delay_merge = np.zeros(_n)
 
