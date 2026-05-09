@@ -105,6 +105,7 @@ class Galaxy_Hound:
         # dicern on ramses versions
         self.ds = yt.load(file_path)
         self.ad = self.ds.all_data()
+        self._tcur_code = float(self.ds.current_time.value)
 
         ############################### ARGUMENTS ##############################
         gas             = kwargs.get('gas'             ,True ) # Load gas
@@ -183,14 +184,11 @@ class Galaxy_Hound:
         self.header = _header_summary(
             self.header_counts, dm_count, st_count, gas_count, bns_count
         )
-        # Capture current time before releasing yt objects.
+        # Capture current_time in Gyr before releasing yt objects.
         try:
             self.current_time = float(self.ds.current_time.to("Gyr"))
         except Exception:
             self.current_time = float(self.ds.current_time) * self.p.unitt / (1e9 * 365.25 * 24 * 3600)
-        # Raw conformal code time — needed so BNS age/delays use the same
-        # unit convention as particle_t_sn2 / particle_t_merge (not converted).
-        self._tcur_code = float(self.ds.current_time.value)
         # yt was only a loading intermediary — release everything once arrays are built.
         try:
             self.ds.index.clear_all_caches()
