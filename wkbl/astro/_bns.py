@@ -1,6 +1,9 @@
 from . import component as comp
 import numpy as np
-from yt.frontends.ramses.io import convert_ramses_conformal_time_to_physical_age
+try:
+    from yt.frontends.ramses.io import convert_ramses_conformal_time_to_physical_age
+except ImportError:
+    from yt.frontends.ramses.io import convert_ramses_ages as convert_ramses_conformal_time_to_physical_age
 
 
 class _bns(comp.Component):
