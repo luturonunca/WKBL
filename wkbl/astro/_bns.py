@@ -75,6 +75,21 @@ class _bns(comp.Component):
         except KeyError:
             self.t_merge = np.zeros(_n)
 
+        try:
+            self.parent_id = np.array(
+                comp._yt_get_field(self._ad, [("bns", "particle_parent_id")]).value,
+                dtype=np.int64,
+            )
+        except KeyError:
+            self.parent_id = np.zeros(_n, dtype=np.int64)
+
+        try:
+            self.m1 = comp._yt_get_field(
+                self._ad, [("bns", "particle_m1")]
+            ).to("Msun").value
+        except KeyError:
+            self.m1 = np.zeros(_n)
+
     def halo_Only(self, center, n, r200, simple=False):
         super().halo_Only(center, n, r200, simple=simple)
         in_halo = np.where(self.r <= n * r200)
@@ -82,8 +97,10 @@ class _bns(comp.Component):
         self.age     = self.age[in_halo]
         self.metal   = self.metal[in_halo]
         self.Eu      = self.Eu[in_halo]
-        self.vkick1  = self.vkick1[in_halo]
-        self.t_sn2   = self.t_sn2[in_halo]
-        self.vkick2  = self.vkick2[in_halo]
-        self.t_merge = self.t_merge[in_halo]
-        self.r       = self.r[in_halo]
+        self.vkick1    = self.vkick1[in_halo]
+        self.t_sn2     = self.t_sn2[in_halo]
+        self.vkick2    = self.vkick2[in_halo]
+        self.t_merge   = self.t_merge[in_halo]
+        self.parent_id = self.parent_id[in_halo]
+        self.m1        = self.m1[in_halo]
+        self.r         = self.r[in_halo]
