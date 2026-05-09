@@ -8,6 +8,7 @@ from . import _dark_matter as d
 from . import component as comp
 from . import _stars as s
 from . import _gas as g
+from . import _bns as b
 from . import nbody_essentials as nbe
 
 
@@ -146,9 +147,8 @@ class Galaxy_Hound:
         if bns and self.header_counts.get("bns", 0) > 0:
             if not self.quiet: print("loading BNS..")
             _ensure_bns_filter(self.ds)
-            self.bns = comp.Component(
+            self.bns = b._bns(
                 file_path,
-                "bns",
                 self.p,
                 comov=comov,
                 ds=self.ds,
@@ -156,13 +156,6 @@ class Galaxy_Hound:
             )
             self._bns = True
             bns_count = len(self.bns.mass)
-            try:
-                self.bns.stage = np.array(
-                    comp._yt_get_field(self.ad, [("bns", "particle_tag")]).value,
-                    dtype=np.int32,
-                )
-            except KeyError:
-                self.bns.stage = np.zeros(bns_count, dtype=np.int32)
             self.ad.clear_data()
         else:
             bns_count = 0
