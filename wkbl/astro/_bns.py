@@ -26,9 +26,14 @@ class _bns(comp.Component):
         # When use_proper_time=.true., birth_time is proper time in code units,
         # so we use texp_code (current proper time in code units) as the reference.
         _use_proper = getattr(p, 'nml', {}).get("use_proper_time", False)
-        _tref = (2.0 / (3.0 * np.sqrt(_om_l))) * \
-                np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5) \
-                if _use_proper else p.time
+        if _use_proper:
+            # RAMSES stores texp as lookback proper time: 0 at z=0, negative at z>0.
+            # Subtract the z=0 value so the origin matches the stored birth times.
+            _tref = (2.0 / (3.0 * np.sqrt(_om_l))) * (
+                np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5) -
+                np.arcsinh(np.sqrt(_om_l / _om_m)))
+        else:
+            _tref = p.time
         try:
             _tau_birth = comp._yt_get_field(
                 self._ad, [("bns", "conformal_birth_time")]
