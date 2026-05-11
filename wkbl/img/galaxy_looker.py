@@ -574,9 +574,10 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
                     refine_factor=1.0, interp3d=False, cube_factor=1.0,
                     return_cube=False, incell_grad=False, grad_k=32,
                     grad_limiter="none", grad_mode="knn",
-                    grad_finer_only=False, print_version=False):
+                    grad_finer_only=False, print_version=False,
+                    weight="mass"):
     """
-    Project gas mass into face-on and edge-on images with AMR-aware subcell splitting.
+    Project a gas quantity into face-on and edge-on images with AMR-aware subcell splitting.
 
     Parameters
     ----------
@@ -599,51 +600,67 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     max_subcell : float or None
         Maximum subcell size used for AMR splitting. Controls unigrid-like resolution.
     interp_mode : {"native", "unigrid", "refine"}
-        - "native": pixel_size=max_subcell=min(cell_size)
-        - "unigrid": requires pixel_size and max_subcell explicitly
-        - "refine": uses max_subcell=refine_factor*min(cell_size)
-    refine_factor : float
-        Subcell size factor used when interp_mode="refine".
+        Subcell splitting strategy:
 
+        - ``"native"``: pixel_size = max_subcell = min(cell_size).
+        - ``"unigrid"``: pixel_size and max_subcell must be supplied explicitly.
+        - ``"refine"``: max_subcell = refine_factor * min(cell_size).
+    refine_factor : float
+        Subcell size multiplier used when interp_mode="refine".
     interp3d : bool
-        If True, build a 3D trilinear interpolated cube on a uniform grid.
+        If True, also build a 3D trilinear-interpolated cube on a uniform grid.
     cube_factor : float
         Grid spacing is cube_factor * min(cell_size) for the 3D cube.
     return_cube : bool
-        If True, return the 3D cube and its metadata in addition to 2D images.
+        If True, return the 3D cube and its metadata alongside the 2D images.
     incell_grad : bool
-        If True, use a linear per-cell density gradient for subcell values.
-        Finest cells are kept unchanged and projected without interpolation.
+        If True, apply a linear per-cell density gradient so that subcell values
+        vary smoothly across each coarse cell.  Finest-level cells are projected
+        directly without interpolation.
     grad_k : int
-        Number of nearest neighbors used for gradient estimation.
+        Number of nearest neighbours used for gradient estimation (knn mode).
     grad_limiter : {"none", "minmax"}
-        If set to "minmax", scales gradients to keep subcell values within
-        neighbor min/max density values.
+        ``"minmax"`` clips subcell values to the neighbour min/max range to
+        suppress overshoots.
     grad_mode : {"knn", "cell_volume"}
-        Gradient neighbor selection: kNN or finer cells inside coarse cell volume.
+        Neighbour set used for gradient estimation: k nearest neighbours, or
+        all finer cells whose centres fall inside the coarse cell volume.
     grad_finer_only : bool
-        If True, only use neighbors with smaller cell_size for gradients.
+        If True, only cells with a smaller cell_size are used as neighbours.
     print_version : bool
-        If True, print the gasimagesarrays version string.
-    grad_mode : {"knn", "cell_volume"}
-        Gradient neighbor selection: kNN or finer cells inside coarse cell volume.
-    grad_finer_only : bool
-        If True, only use neighbors with smaller cell_size for gradients.
+        If True, print the gasimagesarrays version string on entry.
+    weight : {"mass", "metal", "Eu"}, default "mass"
+        Quantity to project.  All options produce a surface-density map in the
+        corresponding units per pixel area:
+
+        - ``"mass"``  : gas mass (extensive — conserved when splitting).
+        - ``"metal"`` : metal mass = mass × metallicity (extensive).
+        - ``"Eu"``    : r-process mass = mass × Eu fraction (extensive).
+
+        Metallicity and Eu fraction are intensive (uniform within each AMR cell),
+        so multiplying by mass before splitting gives the correct extensive quantity
+        whose total is conserved across subcells.
 
     Returns
     -------
     imgface : 2D ndarray
-        Face-on projected gas image.
+        Face-on projected image (surface density of the requested quantity).
     imgedge : 2D ndarray
-        Edge-on projected gas image.
+        Edge-on projected image.
     T : (3,3) ndarray
-        Rotation matrix used for the projection.
+        Rotation matrix applied to the positions.
     cube : 3D ndarray, optional
-        Trilinear interpolated cube (if return_cube is True).
+        Trilinear interpolated cube (only when return_cube is True).
     cube_bounds : tuple, optional
-        Bounds used for the cube (if return_cube is True).
+        Spatial bounds of the cube (only when return_cube is True).
     cube_spacing : float, optional
-        Grid spacing used for the cube (if return_cube is True).
+        Voxel size of the cube (only when return_cube is True).
+
+    Raises
+    ------
+    ValueError
+        If required arguments are missing, interp_mode is unrecognised, or
+        weight is not one of the supported strings.
     """
     if rmax is None or rmin is None:
         raise ValueError("rmax and rmin are required.")
@@ -698,7 +715,15 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     y = simu.gs.pos3d[:, Yi][sel]
     z = simu.gs.pos3d[:, Zi][sel]
     cell_size = simu.gs.hsml[sel]
-    quantity = simu.gs.mass[sel]
+    _weight_options = {"mass", "metal", "Eu"}
+    if weight not in _weight_options:
+        raise ValueError(f"weight must be one of {_weight_options}, got {weight!r}")
+    if weight == "mass":
+        quantity = simu.gs.mass[sel]
+    elif weight == "metal":
+        quantity = simu.gs.mass[sel] * simu.gs.metal[sel]
+    elif weight == "Eu":
+        quantity = simu.gs.mass[sel] * simu.gs.Eu[sel]
 
     if interp_mode == "native":
         if pixel_size is None:
