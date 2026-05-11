@@ -634,7 +634,7 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
         corresponding units per pixel area:
 
         - ``"mass"``  : gas mass (extensive — conserved when splitting).
-        - ``"metal"`` : metal mass = mass × metallicity (extensive).
+        - ``"metal"`` : metal mass = mass × metallicity (simu.gs.met, extensive).
         - ``"Eu"``    : r-process mass = mass × Eu fraction (extensive).
 
         Metallicity and Eu fraction are intensive (uniform within each AMR cell),
@@ -721,7 +721,7 @@ def gasimagesarrays(simu, rotate=False, rmax=None, rmin=None, outr=None,
     if weight == "mass":
         quantity = simu.gs.mass[sel]
     elif weight == "metal":
-        quantity = simu.gs.mass[sel] * simu.gs.metal[sel]
+        quantity = simu.gs.mass[sel] * simu.gs.met[sel]
     elif weight == "Eu":
         quantity = simu.gs.mass[sel] * simu.gs.Eu[sel]
 
