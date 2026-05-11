@@ -22,13 +22,10 @@ class _stars(comp.Component):
             ).value
             _use_proper = getattr(p, 'nml', {}).get("use_proper_time", False)
             if _use_proper:
-                _om_l = p._vars["omega_l"]
-                _om_m = p._vars["omega_m"]
-                _tref = (2.0 / (3.0 * np.sqrt(_om_l))) * \
-                        np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5)
+                # tau_birth is negative lookback proper time; age = lookback time to birth
+                self.age = -_tau_birth * p.unitt / p.aexp**2 / _SEC_PER_GYR
             else:
-                _tref = p.time
-            self.age = (_tref - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
+                self.age = (p.time - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.age = np.zeros(len(self.mass))
         try:
