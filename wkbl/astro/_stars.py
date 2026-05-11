@@ -24,11 +24,8 @@ class _stars(comp.Component):
             if _use_proper:
                 _om_l = p._vars["omega_l"]
                 _om_m = p._vars["omega_m"]
-                # RAMSES stores texp as lookback proper time: 0 at z=0, negative at z>0.
-                # Subtract the z=0 value so the origin matches the stored birth times.
-                _tref = (2.0 / (3.0 * np.sqrt(_om_l))) * (
-                    np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5) -
-                    np.arcsinh(np.sqrt(_om_l / _om_m)))
+                _tref = (2.0 / (3.0 * np.sqrt(_om_l))) * \
+                        np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5)
             else:
                 _tref = p.time
             self.age = (_tref - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR

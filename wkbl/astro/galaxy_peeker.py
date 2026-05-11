@@ -183,8 +183,8 @@ class Galaxy_Hound:
         self.header = _header_summary(
             self.header_counts, dm_count, st_count, gas_count, bns_count
         )
-        # Current cosmic time in Gyr, consistent with star/BNS age convention.
-        self.current_time = self.p.t_cur_gyr
+        # Lookback time to snapshot in Gyr (t0 - t_snapshot), same frame as ages.
+        self.current_time = self.p.t_lookback_gyr
         # yt was only a loading intermediary — release everything once arrays are built.
         try:
             self.ds.index.clear_all_caches()

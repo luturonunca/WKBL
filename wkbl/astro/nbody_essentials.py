@@ -81,10 +81,16 @@ class Info_sniffer:
         _om_l = _vars.get("omega_l", 0.0)
         _om_m = _vars.get("omega_m", 1.0)
         if _om_l > 0 and _om_m > 0:
-            self.t_cur_gyr = (2.0 / (3.0 * _H0_s * np.sqrt(_om_l))) * \
-                             np.arcsinh(np.sqrt(_om_l / _om_m) * self.aexp**1.5) / _SEC_PER_GYR
+            _arcsinh_now = np.arcsinh(np.sqrt(_om_l / _om_m) * self.aexp**1.5)
+            _arcsinh_z0  = np.arcsinh(np.sqrt(_om_l / _om_m))
+            _prefactor   = 2.0 / (3.0 * _H0_s * np.sqrt(_om_l)) / _SEC_PER_GYR
+            self.t_cur_gyr      = _prefactor * _arcsinh_now
+            self.t_0_gyr        = _prefactor * _arcsinh_z0
+            self.t_lookback_gyr = self.t_0_gyr - self.t_cur_gyr
         else:
-            self.t_cur_gyr = self.time * self.unitt / _SEC_PER_GYR
+            self.t_cur_gyr      = self.time * self.unitt / _SEC_PER_GYR
+            self.t_0_gyr        = self.t_cur_gyr
+            self.t_lookback_gyr = 0.0
         self.unitv  = self.unitl/self.unitt
         self.unitm  = self.unitd *  self.unitl**3
         self.boxlen = self.unitl/self.pctocm/1e6 #Mpc
