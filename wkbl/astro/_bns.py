@@ -26,12 +26,18 @@ class _bns(comp.Component):
         _om_m = p._vars["omega_m"]
         _t_cur_gyr = (2.0 / (3.0 * _H0_s * np.sqrt(_om_l))) * \
                      np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5) / _SEC_PER_GYR
-        # Age since birth in Gyr using raw conformal birth time.
+        # Age since birth in Gyr.
+        # When use_proper_time=.true., birth_time is proper time in code units,
+        # so we use texp_code (current proper time in code units) as the reference.
+        _use_proper = getattr(p, 'nml', {}).get("use_proper_time", False)
+        _tref = (2.0 / (3.0 * np.sqrt(_om_l))) * \
+                np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5) \
+                if _use_proper else p.time
         try:
             _tau_birth = comp._yt_get_field(
                 self._ad, [("bns", "conformal_birth_time")]
             ).value
-            self.age = (p.time - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
+            self.age = (_tref - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.age = np.zeros(_n)
         # Family mask selects BNS particles from the ("io",...) all-particle arrays.
