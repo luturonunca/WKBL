@@ -76,6 +76,15 @@ class Info_sniffer:
         self.unitl  = _vars["unit_l"]
         self.unitd  = _vars["unit_d"]
         self.unitt  = _vars["unit_t"]
+        _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
+        _H0_s = _vars["H0"] * 1e3 / 3.086e22
+        _om_l = _vars.get("omega_l", 0.0)
+        _om_m = _vars.get("omega_m", 1.0)
+        if _om_l > 0 and _om_m > 0:
+            self.t_cur_gyr = (2.0 / (3.0 * _H0_s * np.sqrt(_om_l))) * \
+                             np.arcsinh(np.sqrt(_om_l / _om_m) * self.aexp**1.5) / _SEC_PER_GYR
+        else:
+            self.t_cur_gyr = self.time * self.unitt / _SEC_PER_GYR
         self.unitv  = self.unitl/self.unitt
         self.unitm  = self.unitd *  self.unitl**3
         self.boxlen = self.unitl/self.pctocm/1e6 #Mpc
