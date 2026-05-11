@@ -20,12 +20,8 @@ class _bns(comp.Component):
             self.stage = np.zeros(_n, dtype=np.int32)
 
         _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
-        # Flat ΛCDM physical time at snapshot (Gyr since Big Bang).
-        _H0_s = p.H0 * 1e3 / 3.086e22
         _om_l = p._vars["omega_l"]
         _om_m = p._vars["omega_m"]
-        _t_cur_gyr = (2.0 / (3.0 * _H0_s * np.sqrt(_om_l))) * \
-                     np.arcsinh(np.sqrt(_om_l / _om_m) * p.aexp**1.5) / _SEC_PER_GYR
         # Age since birth in Gyr.
         # When use_proper_time=.true., birth_time is proper time in code units,
         # so we use texp_code (current proper time in code units) as the reference.
@@ -37,9 +33,9 @@ class _bns(comp.Component):
             _tau_birth = comp._yt_get_field(
                 self._ad, [("bns", "conformal_birth_time")]
             ).value
-            self.age = (_tref - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
-            self.age = np.zeros(_n)
+            _tau_birth = np.zeros(_n)
+        self.age = (_tref - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         # Family mask selects BNS particles from the ("io",...) all-particle arrays.
         try:
             _fam   = comp._yt_get_field(self._ad, [("io", "particle_family")]).value
@@ -80,7 +76,7 @@ class _bns(comp.Component):
             _tau_sn2 = comp._yt_get_field(
                 self._ad, [("io", "particle_t_sn2")]
             ).value[_bmask]
-            self.t_sn2 = _t_cur_gyr - (p.time - _tau_sn2) * p.unitt / p.aexp**2 / _SEC_PER_GYR
+            self.t_sn2 = (_tau_sn2 - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.t_sn2 = np.zeros(_n)
 
@@ -97,7 +93,7 @@ class _bns(comp.Component):
             _tau_merge = comp._yt_get_field(
                 self._ad, [("io", "particle_t_merge")]
             ).value[_bmask]
-            self.t_merge = _t_cur_gyr - (p.time - _tau_merge) * p.unitt / p.aexp**2 / _SEC_PER_GYR
+            self.t_merge = (_tau_merge - _tau_birth) * p.unitt / p.aexp**2 / _SEC_PER_GYR
         except Exception:
             self.t_merge = np.zeros(_n)
 
