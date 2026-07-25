@@ -49,8 +49,14 @@ class _gas(comp.Component):
         _m = _get([("gas", "metallicity"), ("gas", "metal")])
         self.met = _m if _m is not None else np.zeros(_n)
 
-        _eu = _get([("gas", "bns_enrichment"), ("ramses", "hydro_bns_enrichment")])
+        _eu = _get([("gas", "Eu"), ("ramses", "hydro_Eu")])
         self.Eu = _eu if _eu is not None else np.zeros(_n)
+
+        _fe = _get([("gas", "Fe"), ("ramses", "hydro_Fe")])
+        self.Fe = _fe if _fe is not None else np.zeros(_n)
+
+        _mg = _get([("gas", "Mg"), ("ramses", "hydro_Mg")])
+        self.Mg = _mg if _mg is not None else np.zeros(_n)
 
         try:
             _cv = comp._yt_get_field(self._ad, [("index", "cell_volume")])
@@ -88,6 +94,8 @@ class _gas(comp.Component):
         in_halo = np.where(self.r <= n*r200)
         self.met = self.met[in_halo]
         self.Eu = self.Eu[in_halo]
+        self.Fe = self.Fe[in_halo]
+        self.Mg = self.Mg[in_halo]
         self.pot = self.pot[in_halo]
         self.temp = self.temp[in_halo]
         self.pres = self.pres[in_halo]
