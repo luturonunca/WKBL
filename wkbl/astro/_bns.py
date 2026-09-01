@@ -53,11 +53,31 @@ class _bns(comp.Component):
             self.Eu = np.array(
                 comp._yt_get_field(
                     self._ad,
-                    [("bns", "particle_bns_enrichment")],
+                    [("bns", "particle_Eu")],
                 ).value
             )
         except Exception:
             self.Eu = np.zeros(_n)
+
+        try:
+            self.Fe = np.array(
+                comp._yt_get_field(
+                    self._ad,
+                    [("bns", "particle_Fe")],
+                ).value
+            )
+        except Exception:
+            self.Fe = np.zeros(_n)
+
+        try:
+            self.Mg = np.array(
+                comp._yt_get_field(
+                    self._ad,
+                    [("bns", "particle_Mg")],
+                ).value
+            )
+        except Exception:
+            self.Mg = np.zeros(_n)
 
         try:
             _f = comp._yt_get_field(self._ad, [("bns", "particle_vkick1")])
@@ -117,6 +137,8 @@ class _bns(comp.Component):
         self.age     = self.age[in_halo]
         self.metal   = self.metal[in_halo]
         self.Eu      = self.Eu[in_halo]
+        self.Fe      = self.Fe[in_halo]
+        self.Mg      = self.Mg[in_halo]
         self.vkick1  = self.vkick1[in_halo]
         self.t_sn2   = self.t_sn2[in_halo]
         self.vkick2  = self.vkick2[in_halo]
