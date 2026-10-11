@@ -29,7 +29,9 @@ class Component:
         self._ds = ds
         self._ad = ad
         if comp == "halo":
-            _dm_ptypes = ["dark_matter", "nbody", "io"]
+            # "DM" = yt RAMSES family filter (particle_family == 1); "nbody"/"io" hold ALL particles
+            # (stars included) and are only a fallback for snapshots without particle families
+            _dm_ptypes = ["DM", "dark_matter", "nbody", "io"]
             pos_x = _yt_get_field(ad, [(t, "particle_position_x") for t in _dm_ptypes])
             pos_y = _yt_get_field(ad, [(t, "particle_position_y") for t in _dm_ptypes])
             pos_z = _yt_get_field(ad, [(t, "particle_position_z") for t in _dm_ptypes])
