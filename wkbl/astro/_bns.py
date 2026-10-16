@@ -21,13 +21,22 @@ class _bns(comp.Component):
 
         _SEC_PER_GYR = 1e9 * 365.25 * 24.0 * 3600.0
         _use_proper = getattr(p, 'nml', {}).get("use_proper_time", False)
+        _cosmo = self._ds.cosmological_simulation
         try:
-            _tau_birth = comp._yt_get_field(
-                self._ad, [("bns", "conformal_birth_time")]
-            ).value
+            if not _cosmo:
+                # isolated runs: yt names the field particle_birth_time (code time, no conformal time)
+                _tau_birth = comp._yt_get_field(
+                    self._ad, [("bns", "particle_birth_time")]
+                ).in_units("code_time").value
+            else:
+                _tau_birth = comp._yt_get_field(
+                    self._ad, [("bns", "conformal_birth_time")]
+                ).value
         except Exception:
             _tau_birth = np.zeros(_n)
-        if _use_proper:
+        if not _cosmo:
+            self.age = (p.time - _tau_birth) * p.unitt / _SEC_PER_GYR
+        elif _use_proper:
             # tau_birth is negative lookback proper time; age = lookback time to birth
             self.age = -_tau_birth * p.unitt / p.aexp**2 / _SEC_PER_GYR
         else:
