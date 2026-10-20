@@ -490,14 +490,13 @@ def check_particles(path):
     if (n_tot>0):
         return n_tot, n_dm, n_st
     else:
-        myfi, linum = open(fi[0]), -1
+        myfi = open(fi[0])
         for l in myfi:
-            linum += 1
-            row = l.split('  ')
-            if linum==7:
-                n_dm = float(row[-1])
-            if linum==8:
-                n_st = float(row[-1])
+            row = l.split()
+            if len(row) == 2 and row[0] == 'DM':
+                n_dm = float(row[1])
+            if len(row) == 2 and row[0] == 'star':
+                n_st = float(row[1])
         n_tot = n_st + n_dm
         return int(n_tot), int(n_dm), int(n_st)
 
