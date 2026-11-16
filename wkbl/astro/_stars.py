@@ -76,6 +76,14 @@ class _stars(comp.Component):
         except KeyError:
             self.imf_slope = np.zeros(len(self.mass))
         self.imf_slope = np.array(self.imf_slope)
+        try:
+            self.initial_mass = comp._yt_get_field(
+                self._ad,
+                [("star", "particle_initial_mass")],
+            ).to("Msun").value
+        except KeyError:
+            self.initial_mass = np.zeros(len(self.mass))
+        self.initial_mass = np.array(self.initial_mass)
 
     def halo_Only(self, center, n, r200, simple=False):
         #### sf history ####
@@ -89,6 +97,7 @@ class _stars(comp.Component):
         self.Fe = self.Fe[in_halo]
         self.Mg = self.Mg[in_halo]
         self.imf_slope = self.imf_slope[in_halo]
+        self.initial_mass = self.initial_mass[in_halo]
         self.r = self.r[in_halo]
  
     def shift(self,center):
