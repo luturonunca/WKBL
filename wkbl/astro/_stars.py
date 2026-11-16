@@ -77,9 +77,10 @@ class _stars(comp.Component):
             self.imf_slope = np.zeros(len(self.mass))
         self.imf_slope = np.array(self.imf_slope)
         try:
-            self.initial_mass = comp._yt_get_field(
-                self._ad,
-                [("star", "particle_initial_mass")],
+            # yt reads particle_initial_mass as dimensionless; values are in code mass units
+            self.initial_mass = self._ds.arr(
+                comp._yt_get_field(self._ad, [("star", "particle_initial_mass")]).value,
+                "code_mass",
             ).to("Msun").value
         except KeyError:
             self.initial_mass = np.zeros(len(self.mass))
