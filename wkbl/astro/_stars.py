@@ -85,6 +85,23 @@ class _stars(comp.Component):
         except KeyError:
             self.initial_mass = np.zeros(len(self.mass))
         self.initial_mass = np.array(self.initial_mass)
+        try:
+            # CbC parent-cluster mass label, written by RAMSES in Msun
+            self.cluster_mass = comp._yt_get_field(
+                self._ad,
+                [("star", "particle_cluster_mass")],
+            )
+        except KeyError:
+            self.cluster_mass = np.zeros(len(self.mass))
+        self.cluster_mass = np.array(self.cluster_mass)
+        try:
+            self.cluster_id = comp._yt_get_field(
+                self._ad,
+                [("star", "particle_cluster_id")],
+            )
+        except KeyError:
+            self.cluster_id = np.zeros(len(self.mass))
+        self.cluster_id = np.array(self.cluster_id).astype(np.int64)
 
     def halo_Only(self, center, n, r200, simple=False):
         #### sf history ####
@@ -99,6 +116,8 @@ class _stars(comp.Component):
         self.Mg = self.Mg[in_halo]
         self.imf_slope = self.imf_slope[in_halo]
         self.initial_mass = self.initial_mass[in_halo]
+        self.cluster_mass = self.cluster_mass[in_halo]
+        self.cluster_id = self.cluster_id[in_halo]
         self.r = self.r[in_halo]
  
     def shift(self,center):
