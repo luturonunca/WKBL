@@ -619,3 +619,111 @@ def edge_on_gs(sim,lims,points):
                                        weights=sim.gs.mass)
     result = H.T
     return result, edges
+
+################ stellar luminosities: BC03 SSPs + IMF-tail reweighting ################
+# BC03 Padova2000 Salpeter (0.1-100 Msun) SSPs, per Msun formed. The IMF of the
+# CbC runs (RAMSES pm/imf_commons.f90: Chabrier 0.08-150 Msun, high-mass slope s,
+# Weidner-Kroupa m_max(M_cl)) enters through imf_light_weight (approximate).
+BC03_SALP_MODELS = ["m122", "m132", "m142", "m152", "m162", "m172"]   # Z = 0.0004 ... 0.03
+_PC_CM = 3.0857e18
+_CHAB_MC, _CHAB_SIG, _ML, _MU = 0.079, 0.69, 0.08, 150.0           # as in imf_commons.f90
+_SALP_ML, _SALP_MU, _SALP_S = 0.1, 100.0, 2.35                     # BC03 Salpeter IMF
+
+def read_bc03_model(root):
+    """SSP per 1 Msun formed: ugriz AB mags, surviving stellar mass fraction, log10 N_Lyc [1/s]."""
+    Z = float(open(root + ".1ABmag").read().split("Z=")[1].split()[0])
+    lage, g, ug, gr, gi, gz = np.loadtxt(root + ".1ABmag", usecols=(0, 2, 3, 4, 5, 6), unpack=True)
+    mfrac = np.loadtxt(root + ".4color", usecols=(6,))
+    lognly = np.loadtxt(root + ".3color", usecols=(5,))
+    props = np.column_stack([g + ug, g, g - gr, g - gi, g - gz, mfrac, lognly])   # u,g,r,i,z,M*,logNLy
+    return Z, lage, props
+
+def load_bc03(bc03_dir, models=BC03_SALP_MODELS, imf="salp"):
+    """Reads the BC03 metallicity grid. bc03_dir = .../bc03/models/Padova2000/salpeter/"""
+    m = [read_bc03_model(os.path.join(bc03_dir, "bc2003_hr_{0}_{1}_ssp".format(k, imf))) for k in models]
+    return dict(Z=np.array([b[0] for b in m]), lage=m[0][1], props=[b[2] for b in m])
+
+def bc03_lookup(age_yr, Z, grid):
+    """Linear in log(age) within each model, then linear in log(Z) between neighbouring models (clipped to grid).
+    Columns: u, g, r, i, z [AB abs mag per Msun formed], M*/M_formed, log10 NLy [1/s per Msun formed]."""
+    la = np.log10(np.clip(age_yr, 10**grid["lage"][0], 10**grid["lage"][-1]))
+    w = np.interp(np.log10(np.clip(Z, grid["Z"][0], grid["Z"][-1])), np.log10(grid["Z"]), np.arange(len(grid["Z"])))
+    out = np.zeros((len(la), grid["props"][0].shape[1]))
+    for k, props in enumerate(grid["props"]):
+        wk = np.clip(1 - np.abs(w - k), 0, 1)
+        if wk.any(): out += wk[:, None] * np.column_stack([np.interp(la, grid["lage"], c) for c in props.T])
+    return out
+
+def xi_chabrier(m, s=2.3):
+    """Chabrier (2003) dN/dm, lognormal below 1 Msun, m^-s above (unnormalised, same as xi_chabrier in RAMSES)."""
+    m = np.asarray(m, dtype=float)
+    cont = np.exp(-np.log10(_CHAB_MC)**2 / (2 * _CHAB_SIG**2))
+    return np.where(m <= 1, np.exp(-(np.log10(m) - np.log10(_CHAB_MC))**2 / (2 * _CHAB_SIG**2)) / m, cont * m**(-s))
+
+def _imf_cum(s, a, ml=_ML, mu=_MU, n=4000):
+    """log m grid and cumulative int_ml^m xi(m') m'^a dm' for the Chabrier IMF of slope s."""
+    lm = np.linspace(np.log(ml), np.log(mu), n + 1); m = np.exp(lm)
+    f = xi_chabrier(m, s) * m**(a + 1)                                 # dm = m dln m
+    return lm, np.concatenate([[0], np.cumsum(0.5 * (f[1:] + f[:-1]) * np.diff(lm))])
+
+def wk_mmax(mcl, s=2.3):
+    """Weidner-Kroupa m_max(M_cl) [Msun]: one star expected above m_max (as wk_mmax in RAMSES)."""
+    lm, cn = _imf_cum(s, 0); _, cm = _imf_cum(s, 1)
+    nabove = cn[-1] - cn                                               # N(>m) per unit IMF normalisation
+    target = cm[-1] / np.maximum(np.asarray(mcl, dtype=float), 1e-30)
+    return np.exp(np.interp(-target, -nabove, lm))                     # nabove decreasing; clipped to [ml, mu]
+
+def turnoff_mass(age_yr, Z):
+    """Main-sequence turnoff mass [Msun] inverting the Raiteri et al. (1996) lifetimes (Z clipped to 7e-5..0.03)."""
+    lz = np.log10(np.clip(Z, 7e-5, 0.03)); lt = np.log10(np.maximum(age_yr, 1.0))
+    a0 = 10.13 + 0.07547 * lz - 0.008084 * lz**2
+    a1 = -4.424 - 0.7939 * lz - 0.1187 * lz**2
+    a2 = 1.262 + 0.3385 * lz + 0.05417 * lz**2
+    D = a1**2 - 4 * a2 * (a0 - lt)
+    lm = np.where(D > 0, (-a1 - np.sqrt(np.maximum(D, 0))) / (2 * a2), np.log10(_MU))
+    return np.clip(10**lm, _ML, _MU)
+
+def imf_light_weight(age_yr, Z, s=2.3, mmax=_MU, a=3.0):
+    """Approximate L_IMF(s, m_max) / L_Salpeter for an SSP of the same formed mass.
+    Light of the stars still alive is weighted as m^a up to min(m_TO, m_max), each IMF normalised
+    per Msun formed over its own mass range. Dominated by stars near the turnoff, hence best for young
+    populations and Q_H; for old populations (giants, remnants) it is a first-order correction only."""
+    age_yr, Z = np.atleast_1d(age_yr), np.atleast_1d(Z)
+    s = np.broadcast_to(np.where(np.asarray(s) > 0, s, 2.3), age_yr.shape)   # s=0: non-CbC star -> Chabrier
+    mtop = np.minimum(np.minimum(turnoff_mass(age_yr, Z), _SALP_MU), np.broadcast_to(mmax, age_yr.shape))   # >100 Msun not in BC03
+    w = np.zeros(age_yr.shape)
+    for sk in np.unique(s):
+        k = s == sk; lm, cl = _imf_cum(sk, a); _, cm = _imf_cum(sk, 1)
+        w[k] = np.interp(np.log(mtop[k]), lm, cl) / cm[-1]
+    ms = np.clip(turnoff_mass(age_yr, Z), _SALP_ML, _SALP_MU); e = a + 1 - _SALP_S
+    salp = (ms**e - _SALP_ML**e) / e / ((_SALP_MU**(2 - _SALP_S) - _SALP_ML**(2 - _SALP_S)) / (2 - _SALP_S))
+    return w / salp
+
+def star_luminosities(mass, age_yr, Z, grid, mass0=None, s=None, mcl=None, a_band=3.5, a_ion=4.0):
+    """Rest-frame L_nu [erg/s/Hz] in SDSS u,g,r,i,z (N,5) and Q_H [1/s] (N) of star particles.
+    mass   current mass [Msun]; mass0 formed mass [Msun] (st.initial_mass); stars with mass0<=0 or None
+           use mass / M*(age) from BC03.
+    s      high-mass IMF slope per star (st.imf_slope, 0 -> 2.3); None = plain BC03 Salpeter.
+    mcl    parent cluster mass [Msun] per star (st.cluster_mass) -> Weidner-Kroupa m_max; None = no truncation."""
+    ssp = bc03_lookup(age_yr, Z, grid)
+    m_form = mass / ssp[:, 5]
+    if mass0 is not None: m_form = np.where(mass0 > 0, mass0, m_form)
+    Lnu = m_form[:, None] * 4 * np.pi * (10 * _PC_CM)**2 * 10**(-0.4 * (ssp[:, :5] + 48.6))
+    QH = m_form * 10**ssp[:, 6]
+    if s is not None:
+        sv = np.where(np.asarray(s) > 0, s, 2.3)
+        mmax = _MU
+        if mcl is not None:
+            mmax = np.full(len(mass), _MU)
+            for sk in np.unique(sv): k = sv == sk; mmax[k] = np.where(mcl[k] > 0, wk_mmax(mcl[k], sk), _MU)
+        Lnu *= imf_light_weight(age_yr, Z, sv, mmax, a_band)[:, None]
+        QH *= imf_light_weight(age_yr, Z, sv, mmax, a_ion)
+    return Lnu, QH
+
+def lupton_image(pos, Lnu, L=20.0, bins=800, proj=(0, 1), bands=(3, 2, 1), stretch=0.5, Q=8, pct=99.5):
+    """RGB (default i, r, g) Lupton image of the stellar light projected on axes proj, half-size L [kpc]."""
+    from astropy.visualization import make_lupton_rgb
+    edges = np.linspace(-L, L, bins + 1)
+    img = [np.histogram2d(pos[:, proj[0]], pos[:, proj[1]], bins=[edges, edges], weights=Lnu[:, b])[0].T for b in bands]
+    norm = np.percentile(img[1][img[1] > 0], pct)
+    return make_lupton_rgb(*[im / norm for im in img], stretch=stretch, Q=Q), edges
